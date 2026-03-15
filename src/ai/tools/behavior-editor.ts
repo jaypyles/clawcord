@@ -1,6 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { randomUUID } from "node:crypto";
 
 import { tool } from "ai";
 import { z } from "zod";
@@ -36,23 +36,38 @@ function normalize(content: string): string {
   return content.replace(/\r\n/g, "\n");
 }
 
-function extractJsonlBlock(markdown: string): { before: string; body: string; after: string } {
-  const match = normalize(markdown).match(
-    /([\s\S]*?## Structured Rules \(JSONL\)\n```jsonl\n)([\s\S]*?)(\n```[\s\S]*)/
+function extractJsonlBlock(markdown: string): {
+  before: string;
+  body: string;
+  after: string;
+} {
+  const normalized = normalize(markdown);
+  const sectionMatch = normalized.match(
+    /([\s\S]*?## Structured Rules \(JSONL\)\n)([\s\S]*)/,
   );
 
-  if (!match) {
+  if (!sectionMatch) {
     return {
       before: `${markdown.trimEnd()}\n\n## Structured Rules (JSONL)\n\`\`\`jsonl\n`,
       body: "",
-      after: "\n```\n"
+      after: "\n```\n",
     };
   }
 
+  const before = sectionMatch[1] + "```jsonl\n";
+  const rest = sectionMatch[2] ?? "";
+  const blockRegex = /```jsonl\n([\s\S]*?)\n```/g;
+  const bodies: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = blockRegex.exec(rest)) !== null) {
+    bodies.push((m[1] ?? "").trim());
+  }
+  const body = bodies.join("\n");
+
   return {
-    before: match[1] ?? "",
-    body: match[2] ?? "",
-    after: match[3] ?? ""
+    before,
+    body,
+    after: "\n```\n",
   };
 }
 
@@ -92,8 +107,14 @@ export const behaviorEditorTool = tool({
     "Read and update structured behavior rules in agent-core/BEHAVIOR.md using a JSONL-backed format.",
   inputSchema: z.object({
     action: z.enum(["read", "add", "set_enabled", "delete"]),
-    id: z.string().optional().describe("Rule id (required for set_enabled/delete)."),
-    instruction: z.string().optional().describe("Behavior instruction (required for add)."),
+    id: z
+      .string()
+      .optional()
+      .describe("Rule id (required for set_enabled/delete)."),
+    instruction: z
+      .string()
+      .optional()
+      .describe("Behavior instruction (required for add)."),
     rationale: z.string().optional().describe("Optional rationale for add."),
     priority: z
       .enum(["low", "medium", "high"])
@@ -107,10 +128,13 @@ export const behaviorEditorTool = tool({
       .max(100)
       .optional()
       .default(20)
-      .describe("Number of most recent rules for read.")
+      .describe("Number of most recent rules for read."),
   }),
   execute: async (input) => {
-    logToolStart("behavior_editor", { action: input.action, id: input.id ?? null });
+    logToolStart("behavior_editor", {
+      action: input.action,
+      id: input.id ?? null,
+    });
     try {
       await ensureBehaviorFile();
       const markdown = await readFile(BEHAVIOR_FILE_PATH, "utf8");
@@ -118,13 +142,16 @@ export const behaviorEditorTool = tool({
       const rules = parseRules(block.body);
 
       if (input.action === "read") {
-        const recent = [...rules].slice(-input.limit).reverse();
-        logToolSuccess("behavior_editor", { action: "read", count: recent.length });
+        logToolSuccess("behavior_editor", {
+          action: "read",
+          count: rules.length,
+        });
+        console.log({ rules });
         return {
           ok: true,
           filePath: BEHAVIOR_FILE_PATH,
-          count: recent.length,
-          rules: recent
+          count: rules.length,
+          rules: rules,
         };
       }
 
@@ -132,7 +159,7 @@ export const behaviorEditorTool = tool({
         if (!input.instruction) {
           return {
             ok: false,
-            error: "instruction is required for add."
+            error: "instruction is required for add.",
           };
         }
 
@@ -142,7 +169,7 @@ export const behaviorEditorTool = tool({
           priority: input.priority ?? "medium",
           instruction: input.instruction,
           rationale: input.rationale ?? "",
-          enabled: true
+          enabled: true,
         };
         const nextRules = [...rules, rule];
         const nextMarkdown = `${block.before}${renderRules(nextRules)}${block.after}`;
@@ -151,14 +178,14 @@ export const behaviorEditorTool = tool({
         return {
           ok: true,
           filePath: BEHAVIOR_FILE_PATH,
-          rule
+          rule,
         };
       }
 
       if (!input.id) {
         return {
           ok: false,
-          error: "id is required for this action."
+          error: "id is required for this action.",
         };
       }
 
@@ -166,28 +193,31 @@ export const behaviorEditorTool = tool({
         if (typeof input.enabled !== "boolean") {
           return {
             ok: false,
-            error: "enabled is required for set_enabled."
+            error: "enabled is required for set_enabled.",
           };
         }
         const nextRules = rules.map((rule) =>
-          rule.id === input.id ? { ...rule, enabled: input.enabled ?? rule.enabled } : rule
+          rule.id === input.id
+            ? { ...rule, enabled: input.enabled ?? rule.enabled }
+            : rule,
         );
         const updated = nextRules.some(
-          (rule, index) => rule.enabled !== rules[index]?.enabled && rule.id === input.id
+          (rule, index) =>
+            rule.enabled !== rules[index]?.enabled && rule.id === input.id,
         );
         const nextMarkdown = `${block.before}${renderRules(nextRules)}${block.after}`;
         await writeFile(BEHAVIOR_FILE_PATH, nextMarkdown, "utf8");
         logToolSuccess("behavior_editor", {
           action: "set_enabled",
           id: input.id,
-          updated
+          updated,
         });
         return {
           ok: true,
           filePath: BEHAVIOR_FILE_PATH,
           id: input.id,
           updated,
-          enabled: input.enabled
+          enabled: input.enabled,
         };
       }
 
@@ -195,23 +225,30 @@ export const behaviorEditorTool = tool({
       const deleted = nextRules.length !== rules.length;
       const nextMarkdown = `${block.before}${renderRules(nextRules)}${block.after}`;
       await writeFile(BEHAVIOR_FILE_PATH, nextMarkdown, "utf8");
-      logToolSuccess("behavior_editor", { action: "delete", id: input.id, deleted });
+      logToolSuccess("behavior_editor", {
+        action: "delete",
+        id: input.id,
+        deleted,
+      });
       return {
         ok: true,
         filePath: BEHAVIOR_FILE_PATH,
         id: input.id,
-        deleted
+        deleted,
       };
     } catch (error) {
       logToolError("behavior_editor", error, {
         action: input.action,
-        id: input.id ?? null
+        id: input.id ?? null,
       });
       return {
         ok: false,
         filePath: BEHAVIOR_FILE_PATH,
-        error: error instanceof Error ? error.message : "Unknown behavior editor error"
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unknown behavior editor error",
       };
     }
-  }
+  },
 });

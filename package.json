@@ -12,6 +12,7 @@
   "dependencies": {
     "@openrouter/ai-sdk-provider": "^2.3.1",
     "ai": "latest",
+    "croner": "^10.0.1",
     "discord.js": "latest",
     "zod": "latest"
   },

@@ -13,6 +13,7 @@ import {
   type ConversationMessage,
   generateBotReply
 } from "./ai/generate-reply";
+import { startScheduleRunner } from "./ai/schedule-runner";
 import { pingCommand } from "./commands/ping";
 import { env } from "./config/env";
 import { splitIntoDiscordMessages } from "./discord/message-chunks";
@@ -93,6 +94,7 @@ async function buildConversationFromMessage(
 
 client.once(Events.ClientReady, (readyClient) => {
   console.log(`Logged in as ${readyClient.user.tag}`);
+  startScheduleRunner(readyClient);
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {

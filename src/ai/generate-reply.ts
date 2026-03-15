@@ -151,11 +151,14 @@ export async function generateBotReply(
         Everything about your behavior is stored in this folder as md files: ${agentCoreDir}
 
         MEMORY.md is your memory. Use memory_editor to read/add/delete structured memory entries. ALWAYS check the MEMORY.md file before acting.
-        BEHAVIOR.md controls response behavior. Use behavior_editor to read/add/enable-disable/delete structured behavior rules. ALWAYS check the BEHAVIOR.md file before acting.
+        BEHAVIOR.md controls response behavior. Use behavior_editor to read/add/enable-disable/delete structured behavior rules. 
+        ALWAYS read BEHAVIOR.md before acting and APPLY all enabled behavior rules to every response (e.g. tone, style, constraints). Your answers must follow those rules.
+        You must always read BEHAVIOR.md before responding to any prompt.
 
         These files are life and death, so should always be read before acting.
 
         COMMANDS.md is your command registry. Use the commands_registry tool to list/read/upsert commands for quick command workflows.
+        SCHEDULE.md defines cron-scheduled prompts. Use schedule_editor to read/add/set_enabled/delete jobs. Each job has a cron expression (e.g. '0 9 * * *' for 9:00 daily) and a prompt; the agent runs that prompt on schedule. Optional discordChannelId posts the reply to a Discord channel.
         User commands come in the form: !<command_name>: whenever a user uses this format, they want to call a command. 
         You should only be reading commands if a user has a command in their message content.
 

@@ -37,11 +37,12 @@ function normalize(content: string): string {
 }
 
 function extractJsonlBlock(markdown: string): { before: string; body: string; after: string } {
-  const match = normalize(markdown).match(
-    /([\s\S]*?## Structured Entries \(JSONL\)\n```jsonl\n)([\s\S]*?)(\n```[\s\S]*)/
+  const normalized = normalize(markdown);
+  const sectionMatch = normalized.match(
+    /([\s\S]*?## Structured Entries \(JSONL\)\n)([\s\S]*)/
   );
 
-  if (!match) {
+  if (!sectionMatch) {
     return {
       before: `${markdown.trimEnd()}\n\n## Structured Entries (JSONL)\n\`\`\`jsonl\n`,
       body: "",
@@ -49,10 +50,20 @@ function extractJsonlBlock(markdown: string): { before: string; body: string; af
     };
   }
 
+  const before = sectionMatch[1] + "```jsonl\n";
+  const rest = sectionMatch[2] ?? "";
+  const blockRegex = /```jsonl\n([\s\S]*?)\n```/g;
+  const bodies: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = blockRegex.exec(rest)) !== null) {
+    bodies.push((m[1] ?? "").trim());
+  }
+  const body = bodies.join("\n");
+
   return {
-    before: match[1] ?? "",
-    body: match[2] ?? "",
-    after: match[3] ?? ""
+    before,
+    body,
+    after: "\n```\n"
   };
 }
 

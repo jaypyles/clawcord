@@ -4,6 +4,7 @@ import { commandsRegistryTool } from "./commands-registry";
 import { getTimeTool } from "./get-time";
 import { httpFetchTool } from "./http-fetch";
 import { memoryEditorTool } from "./memory-editor";
+import { scheduleEditorTool } from "./schedule-editor";
 import { skillsReaderTool } from "./skills-reader";
 
 export const botTools = {
@@ -13,5 +14,6 @@ export const botTools = {
   behavior_editor: behaviorEditorTool,
   commands_registry: commandsRegistryTool,
   get_time: getTimeTool,
-  skills_reader: skillsReaderTool
+  skills_reader: skillsReaderTool,
+  schedule_editor: scheduleEditorTool
 };

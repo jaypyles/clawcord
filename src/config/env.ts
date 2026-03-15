@@ -8,6 +8,10 @@ const envSchema = z.object({
   OPENROUTER_MODEL: z.string().default("openai/gpt-4o-mini"),
   PLAYGROUND_DIR: z.string().optional(),
   AGENT_CORE_DIR: z.string().optional(),
+  SCHEDULE_DISCORD_CHANNEL_ID: z
+    .string()
+    .optional()
+    .describe("Default Discord channel ID for scheduled job replies when job has no discordChannelId"),
   ENABLE_BASH_TOOL: z
     .enum(["true", "false"])
     .default("false")
