@@ -32,7 +32,6 @@ COPY package.json ./
 
 # Copy application source and agent-core (behavior, memory, schedule, etc.)
 COPY src ./src
-COPY agent-core ./agent-core
 COPY tsconfig.json ./
 
 USER app
