@@ -1,8 +1,4 @@
 <p align="center">
-  <img src="assets/clawcord-logo.png" alt="Clawcord" width="400">
-</p>
-
-<p align="center">
   <strong>Clawcord</strong> — A Discord bot wired to <strong>OpenRouter</strong>. Use stealth or free models, GPT, or any provider. One process, one stack, tuned to <strong>your</strong> workflow.
 </p>
 
