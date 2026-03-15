@@ -24,7 +24,9 @@ function ensureSafeSkillPath(inputPath: string): string {
 
 /** Single path segment: no slashes, no parent refs */
 function safeSkillId(skillId: string): boolean {
-  return /^[a-zA-Z0-9_.-]+$/.test(skillId) && skillId !== ".." && skillId !== ".";
+  return (
+    /^[a-zA-Z0-9_.-]+$/.test(skillId) && skillId !== ".." && skillId !== "."
+  );
 }
 
 function skillPathCandidates(input: string): string[] {
@@ -67,7 +69,9 @@ export const skillsEditorTool = tool({
   inputSchema: z.object({
     action: z
       .enum(["create", "update", "delete"])
-      .describe("Create a new skill, update an existing one, or delete a skill."),
+      .describe(
+        "Create a new skill, update an existing one, or delete a skill.",
+      ),
     skillId: z
       .string()
       .optional()
@@ -113,11 +117,17 @@ export const skillsEditorTool = tool({
         }
         const content = input.content;
         const isClaudeCode = input.format === "claude-code";
-        const relativePath = isClaudeCode ? join(id, DEFAULT_SKILL_FILE) : `${id}.md`;
+        const relativePath = isClaudeCode
+          ? join(id, DEFAULT_SKILL_FILE)
+          : `${id}.md`;
         const fullPath = ensureSafeSkillPath(relativePath);
         await mkdir(dirname(fullPath), { recursive: true });
         await writeFile(fullPath, content, "utf8");
-        logToolSuccess("skills_editor", { action: "create", skillId: id, path: relativePath });
+        logToolSuccess("skills_editor", {
+          action: "create",
+          skillId: id,
+          path: relativePath,
+        });
         return {
           ok: true,
           directory: SKILLS_DIR,
@@ -149,7 +159,9 @@ export const skillsEditorTool = tool({
           return { ok: false, error: "skillId is required for delete." };
         }
         const fullPath = await resolveWritableSkillPath(input.skillId.trim());
-        const isClaudeCode = fullPath.endsWith(`${sep}${DEFAULT_SKILL_FILE}`) || fullPath.endsWith(`/${DEFAULT_SKILL_FILE}`);
+        const isClaudeCode =
+          fullPath.endsWith(`${sep}${DEFAULT_SKILL_FILE}`) ||
+          fullPath.endsWith(`/${DEFAULT_SKILL_FILE}`);
         if (isClaudeCode) {
           await rm(dirname(fullPath), { recursive: true });
         } else {

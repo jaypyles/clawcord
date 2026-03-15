@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   bash \
   busybox \
   ca-certificates \
+  jq \
   curl \
   ffmpeg \
   python3 \
