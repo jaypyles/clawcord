@@ -34,7 +34,4 @@ COPY package.json ./
 COPY src ./src
 COPY tsconfig.json ./
 
-USER app
-EXPOSE 3000
-
 ENTRYPOINT ["bun", "run", "start"]
