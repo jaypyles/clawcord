@@ -6,7 +6,7 @@ import { tool } from "ai";
 import { z } from "zod";
 import { logToolError, logToolStart, logToolSuccess } from "../tool-logger";
 
-const SKILLS_DIR = resolve(homedir(), ".config/justdothething/skills");
+const SKILLS_DIR = resolve(homedir(), ".config/clawcord/skills");
 const MAX_FILE_PREVIEW_CHARS = 16_000;
 const DEFAULT_SKILL_FILE = "SKILL.md";
 
@@ -62,7 +62,10 @@ function parseFrontmatter(content: string): {
   return { metadata, frontmatterRaw, body };
 }
 
-function skillSummary(metadata: Record<string, string>, fallbackId: string): {
+function skillSummary(
+  metadata: Record<string, string>,
+  fallbackId: string,
+): {
   name: string;
   description: string;
 } {
@@ -70,7 +73,7 @@ function skillSummary(metadata: Record<string, string>, fallbackId: string): {
     name: metadata.name ?? fallbackId,
     description:
       metadata.description ??
-      "No description provided in SKILL.md frontmatter."
+      "No description provided in SKILL.md frontmatter.",
   };
 }
 
@@ -81,7 +84,10 @@ function skillPathCandidates(input: string): string[] {
   if (!input.endsWith(".md")) {
     candidates.add(`${input}.md`);
   }
-  if (!input.endsWith(`/${DEFAULT_SKILL_FILE}`) && !input.endsWith(`\\${DEFAULT_SKILL_FILE}`)) {
+  if (
+    !input.endsWith(`/${DEFAULT_SKILL_FILE}`) &&
+    !input.endsWith(`\\${DEFAULT_SKILL_FILE}`)
+  ) {
     candidates.add(join(input, DEFAULT_SKILL_FILE));
   }
 
@@ -100,7 +106,7 @@ async function resolveReadableSkillPath(input: string): Promise<string> {
   }
 
   throw new Error(
-    "Skill not found. Expected a Markdown file or Claude Code format at <skill>/SKILL.md."
+    "Skill not found. Expected a Markdown file or Claude Code format at <skill>/SKILL.md.",
   );
 }
 
@@ -129,7 +135,7 @@ async function listSkills() {
           relativePath,
           format: "claude-code",
           metadata: parsed.metadata,
-          ...skillSummary(parsed.metadata, entry.name)
+          ...skillSummary(parsed.metadata, entry.name),
         });
       } catch {
         // Ignore directories without readable SKILL.md
@@ -151,7 +157,7 @@ async function listSkills() {
       relativePath,
       format: "markdown",
       metadata: parsed.metadata,
-      ...skillSummary(parsed.metadata, entry.name.replace(/\.md$/i, ""))
+      ...skillSummary(parsed.metadata, entry.name.replace(/\.md$/i, "")),
     });
   }
 
@@ -169,17 +175,19 @@ async function listSkillScriptsById(skillId: string): Promise<string[]> {
 
 export const skillsReaderTool = tool({
   description:
-    "List and read local skills from ~/.config/justdothething/skills. Supports Claude Code skill format (<skill>/SKILL.md with frontmatter). Returns explicit skill name and description.",
+    "List and read local skills from ~/.config/clawcord/skills. Supports Claude Code skill format (<skill>/SKILL.md with frontmatter). Returns explicit skill name and description.",
   inputSchema: z.object({
     action: z
       .enum(["list", "read"])
-      .describe("Use 'list' to view available skills or 'read' to read a specific skill file."),
+      .describe(
+        "Use 'list' to view available skills or 'read' to read a specific skill file.",
+      ),
     fileName: z
       .string()
       .optional()
       .describe(
-        "Required when action is 'read'. Accepts a skill id, file name, or path like 'my-skill', 'my-skill.md', or 'my-skill/SKILL.md'."
-      )
+        "Required when action is 'read'. Accepts a skill id, file name, or path like 'my-skill', 'my-skill.md', or 'my-skill/SKILL.md'.",
+      ),
   }),
   execute: async ({ action, fileName }) => {
     logToolStart("skills_reader", { action, fileName: fileName ?? null });
@@ -198,18 +206,18 @@ export const skillsReaderTool = tool({
             } catch {
               return { ...skill, scripts: [] as string[] };
             }
-          })
+          }),
         );
 
         const output = {
           ok: true,
           directory: SKILLS_DIR,
           skillCount: skillsWithScripts.length,
-          skills: skillsWithScripts
+          skills: skillsWithScripts,
         };
         logToolSuccess("skills_reader", {
           action,
-          skillCount: output.skillCount
+          skillCount: output.skillCount,
         });
         return output;
       }
@@ -217,14 +225,16 @@ export const skillsReaderTool = tool({
       if (!fileName) {
         return {
           ok: false,
-          error: "fileName is required when action is 'read'."
+          error: "fileName is required when action is 'read'.",
         };
       }
 
       const fullPath = await resolveReadableSkillPath(fileName);
       const content = await readFile(fullPath, "utf8");
       const parsed = parseFrontmatter(content);
-      const skillId = fileName.replace(/\/?SKILL\.md$/i, "").replace(/\.md$/i, "");
+      const skillId = fileName
+        .replace(/\/?SKILL\.md$/i, "")
+        .replace(/\.md$/i, "");
       const summary = skillSummary(parsed.metadata, skillId);
       let scripts: string[] = [];
       try {
@@ -239,7 +249,8 @@ export const skillsReaderTool = tool({
         fileName: basename(fileName),
         fullPath,
         format:
-          fullPath.endsWith(`${sep}${DEFAULT_SKILL_FILE}`) || fullPath.endsWith(`/${DEFAULT_SKILL_FILE}`)
+          fullPath.endsWith(`${sep}${DEFAULT_SKILL_FILE}`) ||
+          fullPath.endsWith(`/${DEFAULT_SKILL_FILE}`)
             ? "claude-code"
             : "markdown",
         name: summary.name,
@@ -249,22 +260,28 @@ export const skillsReaderTool = tool({
         frontmatterRaw: parsed.frontmatterRaw,
         contentPreview: truncateText(parsed.body),
         truncated: content.length > MAX_FILE_PREVIEW_CHARS,
-        characterCount: content.length
+        characterCount: content.length,
       };
       logToolSuccess("skills_reader", {
         action,
         fileName: output.fileName,
         format: output.format,
-        scripts: output.scripts.length
+        scripts: output.scripts.length,
       });
       return output;
     } catch (error) {
-      logToolError("skills_reader", error, { action, fileName: fileName ?? null });
+      logToolError("skills_reader", error, {
+        action,
+        fileName: fileName ?? null,
+      });
       return {
         ok: false,
         directory: SKILLS_DIR,
-        error: error instanceof Error ? error.message : "Unknown skills reader error"
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unknown skills reader error",
       };
     }
-  }
+  },
 });

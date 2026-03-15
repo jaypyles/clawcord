@@ -165,7 +165,7 @@ export async function generateBotReply(
         Before responding to the user, make sure you read these to remember how to respond to things.
 
         The http_fetch tool accepts rich fetch options similar to native fetch. 
-        Use skills_reader to discover and read local skills from ~/.config/justdothething/skills when relevant. 
+        Use skills_reader to discover and read local skills from ~/.config/clawcord/skills when relevant. 
         When a user asks you to do an action/task, first call skills_reader with action="list" before other tools. 
         Use the returned skill name + description to choose if a skill applies, and mention the matching skill in your response. 
         Do not claim inability before attempting relevant tool calls. 

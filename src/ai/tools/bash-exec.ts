@@ -13,7 +13,7 @@ import { logToolError, logToolStart, logToolSuccess } from "../tool-logger";
 const execAsync = promisify(exec);
 const MAX_PREVIEW_CHARS = 3500;
 const BASH_TIMEOUT_MS = 10_000;
-const SKILLS_DIR = resolve(homedir(), ".config/justdothething/skills");
+const SKILLS_DIR = resolve(homedir(), ".config/clawcord/skills");
 
 function trimPreview(text: string): string {
   return text.length > MAX_PREVIEW_CHARS
@@ -27,7 +27,7 @@ function hasBlockedPattern(command: string): boolean {
     /mkfs/i,
     /\bshutdown\b/i,
     /\breboot\b/i,
-    /:\(\)\s*\{\s*:\|:&\s*\};:/
+    /:\(\)\s*\{\s*:\|:&\s*\};:/,
   ];
 
   return blocked.some((pattern) => pattern.test(command));
@@ -43,7 +43,9 @@ async function resolveSkillScriptPath(inputPath: string): Promise<string> {
     : resolve(SKILLS_DIR, inputPath);
 
   if (!isWithinSkillsDir(fullPath)) {
-    throw new Error("bash_exec filePath must be inside ~/.config/justdothething/skills.");
+    throw new Error(
+      "bash_exec filePath must be inside ~/.config/clawcord/skills.",
+    );
   }
 
   await access(fullPath);
@@ -65,7 +67,7 @@ export const bashExecTool = tool({
         .min(1)
         .optional()
         .describe(
-          "Path to a shell script file under ~/.config/justdothething/skills. Can be absolute or relative to that directory."
+          "Path to a shell script file under ~/.config/clawcord/skills. Can be absolute or relative to that directory.",
         ),
       args: z
         .array(z.string())
@@ -75,10 +77,10 @@ export const bashExecTool = tool({
         .string()
         .min(1)
         .optional()
-        .describe("Optional working directory for execution.")
+        .describe("Optional working directory for execution."),
     })
     .refine((value) => Boolean(value.command || value.filePath), {
-      message: "Provide either command or filePath."
+      message: "Provide either command or filePath.",
     }),
   execute: async ({ command, filePath, args, cwd }) => {
     logToolStart("bash_exec", {
@@ -86,7 +88,7 @@ export const bashExecTool = tool({
       filePath: filePath ?? null,
       hasCommand: Boolean(command),
       argCount: args?.length ?? 0,
-      cwd: cwd ?? null
+      cwd: cwd ?? null,
     });
 
     if (!env.ENABLE_BASH_TOOL) {
@@ -94,17 +96,17 @@ export const bashExecTool = tool({
       return {
         success: false,
         error:
-          "bash_exec is disabled. Set ENABLE_BASH_TOOL=true in .env to enable it."
+          "bash_exec is disabled. Set ENABLE_BASH_TOOL=true in .env to enable it.",
       };
     }
 
     if (command && hasBlockedPattern(command)) {
       logToolError("bash_exec", "Command blocked by safety policy.", {
-        mode: "command"
+        mode: "command",
       });
       return {
         success: false,
-        error: "Command blocked by safety policy."
+        error: "Command blocked by safety policy.",
       };
     }
 
@@ -123,22 +125,25 @@ export const bashExecTool = tool({
         bashCommand = command ?? "";
       }
 
-      const { stdout, stderr } = await execAsync(`bash -lc ${JSON.stringify(bashCommand)}`, {
-        cwd,
-        timeout: BASH_TIMEOUT_MS,
-        maxBuffer: 1024 * 1024
-      });
+      const { stdout, stderr } = await execAsync(
+        `bash -lc ${JSON.stringify(bashCommand)}`,
+        {
+          cwd,
+          timeout: BASH_TIMEOUT_MS,
+          maxBuffer: 1024 * 1024,
+        },
+      );
 
       const output = {
         success: true,
         mode: filePath ? "file" : "command",
         filePath: filePath ?? null,
         stdout: trimPreview(stdout),
-        stderr: trimPreview(stderr)
+        stderr: trimPreview(stderr),
       };
       logToolSuccess("bash_exec", {
         mode: output.mode,
-        filePath: output.filePath
+        filePath: output.filePath,
       });
       return output;
     } catch (error) {
@@ -151,7 +156,7 @@ export const bashExecTool = tool({
 
       logToolError("bash_exec", error, {
         mode: filePath ? "file" : "command",
-        filePath: filePath ?? null
+        filePath: filePath ?? null,
       });
       return {
         success: false,
@@ -160,8 +165,8 @@ export const bashExecTool = tool({
         code: execError.code ?? null,
         message: execError.message,
         stdout: trimPreview(execError.stdout ?? ""),
-        stderr: trimPreview(execError.stderr ?? "")
+        stderr: trimPreview(execError.stderr ?? ""),
       };
     }
-  }
+  },
 });
