@@ -1,50 +1,28 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, resolve, sep } from "node:path";
+import { dirname } from "node:path";
 
 import { tool } from "ai";
 import { z } from "zod";
 
-import { env } from "../../config/env";
 import { logToolError, logToolStart, logToolSuccess } from "../tool-logger";
-
-const PLAYGROUND_ROOT =
-  env.PLAYGROUND_DIR && env.PLAYGROUND_DIR.trim().length > 0
-    ? env.PLAYGROUND_DIR
-    : resolve(process.cwd(), "playground");
-
-function ensurePlaygroundPath(inputPath: string): string {
-  const fullPath = isAbsolute(inputPath)
-    ? resolve(inputPath)
-    : resolve(PLAYGROUND_ROOT, inputPath);
-  const normalizedRoot = resolve(PLAYGROUND_ROOT);
-  const normalizedPath = resolve(fullPath);
-  if (
-    normalizedPath !== normalizedRoot &&
-    !normalizedPath.startsWith(`${normalizedRoot}${sep}`)
-  ) {
-    throw new Error(
-      `path must be inside the playground folder: ${normalizedRoot}`,
-    );
-  }
-  return normalizedPath;
-}
+import { resolveToolPath } from "./resolve-tool-path";
 
 export const createFileTool = tool({
   description:
-    "Create or overwrite a UTF-8 text file under the playground folder. Creates parent directories as needed.",
+    "Create or overwrite a UTF-8 text file anywhere the process can write (e.g. mounted volumes in Docker). Creates parent directories as needed.",
   inputSchema: z.object({
     path: z
       .string()
       .min(1)
       .describe(
-        "File path relative to the playground folder, or absolute path inside that folder.",
+        "Absolute path, or relative to the process working directory. '~/' expands to the container user's home.",
       ),
     text: z.string().describe("Full file contents to write."),
   }),
   execute: async ({ path: filePath, text }) => {
     logToolStart("create_file", { path: filePath });
     try {
-      const resolved = ensurePlaygroundPath(filePath);
+      const resolved = resolveToolPath(filePath);
       await mkdir(dirname(resolved), { recursive: true });
       await writeFile(resolved, text, "utf8");
       logToolSuccess("create_file", { path: resolved });

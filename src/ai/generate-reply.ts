@@ -142,10 +142,8 @@ export async function generateBotReply(
         Keep answers concise, clear, and practical unless asked for deep detail. 
         Use tools when they are useful and cite what tool you used in plain language. 
 
-        You have a sandbox folder available to you called 'playground'. 
-        Full path: ${playgroundFolder}
-        You can do whatever you want in this folder.
-        Everything should be performed in this folder unless otherwise specified.
+        You have a sandbox folder called 'playground' for scratch work (full path: ${playgroundFolder}).
+        Prefer it for ad-hoc files when appropriate. The create_file and edit_file tools can read and write any path the process can access (e.g. bind mounts in Docker); relative paths use the container working directory.
 
         Everything about your behavior is stored in this folder as md files: ${agentCoreDir}
 

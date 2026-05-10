@@ -1,43 +1,20 @@
 import { readFile, writeFile } from "node:fs/promises";
-import { isAbsolute, resolve, sep } from "node:path";
 
 import { tool } from "ai";
 import { z } from "zod";
 
-import { env } from "../../config/env";
 import { logToolError, logToolStart, logToolSuccess } from "../tool-logger";
-
-const PLAYGROUND_ROOT =
-  env.PLAYGROUND_DIR && env.PLAYGROUND_DIR.trim().length > 0
-    ? env.PLAYGROUND_DIR
-    : resolve(process.cwd(), "playground");
-
-function ensurePlaygroundPath(inputPath: string): string {
-  const fullPath = isAbsolute(inputPath)
-    ? resolve(inputPath)
-    : resolve(PLAYGROUND_ROOT, inputPath);
-  const normalizedRoot = resolve(PLAYGROUND_ROOT);
-  const normalizedPath = resolve(fullPath);
-  if (
-    normalizedPath !== normalizedRoot &&
-    !normalizedPath.startsWith(`${normalizedRoot}${sep}`)
-  ) {
-    throw new Error(
-      `path must be inside the playground folder: ${normalizedRoot}`,
-    );
-  }
-  return normalizedPath;
-}
+import { resolveToolPath } from "./resolve-tool-path";
 
 export const editFileTool = tool({
   description:
-    "Replace the first occurrence of oldText with newText in a UTF-8 text file under the playground folder.",
+    "Replace the first occurrence of oldText with newText in a UTF-8 text file under the project playground folder or under ~/.config.",
   inputSchema: z.object({
     path: z
       .string()
       .min(1)
       .describe(
-        "File path relative to the playground folder, or absolute path inside that folder.",
+        "Path: relative to playground, or relative to home as '.config/...', or absolute under playground or ~/.config. '~/' is expanded.",
       ),
     oldText: z
       .string()
@@ -47,7 +24,7 @@ export const editFileTool = tool({
   execute: async ({ path: filePath, oldText, newText }) => {
     logToolStart("edit_file", { path: filePath });
     try {
-      const resolved = ensurePlaygroundPath(filePath);
+      const resolved = resolveToolPath(filePath);
       const before = await readFile(resolved, "utf8");
       if (!before.includes(oldText)) {
         logToolError("edit_file", "oldText not found in file", {
