@@ -4,36 +4,30 @@ import { resolve } from "node:path";
 
 import { env } from "../config/env";
 import { botTools } from "./tools/index";
+import type { ConversationMessage, BotReplyResult } from "../types/ai";
+import {
+  MAX_CONVERSATION_CHARS,
+  MAX_CONVERSATION_MESSAGES,
+  MAX_TOOL_SUMMARY_LINES,
+} from "../constants/conversation";
+
+export type { ConversationMessage, BotReplyResult };
 
 const provider = createOpenRouter({
   apiKey: env.OPENROUTER_API_KEY,
 });
 
-export type ConversationMessage = {
-  role: "user" | "assistant";
-  content: string;
-};
-
-export type BotReplyResult = {
-  text: string;
-  toolSummary: string;
-};
-
-const MAX_CONVERSATION_MESSAGES = 14;
-const MAX_CONVERSATION_CHARS = 12_000;
-const MAX_TOOL_SUMMARY_LINES = 8;
-
 function looksLikeActionRequest(prompt: string): boolean {
   const lowered = prompt.toLowerCase();
   return (
     /(download|save|grab|run|execute|convert|fetch|install|open|create|delete|build|fix|debug)\b/.test(
-      lowered,
+      lowered
     ) || /https?:\/\//.test(lowered)
   );
 }
 
 function trimConversationWindow(
-  messages: ConversationMessage[],
+  messages: ConversationMessage[]
 ): ConversationMessage[] {
   const bounded = messages.slice(-MAX_CONVERSATION_MESSAGES);
   const kept: ConversationMessage[] = [];
@@ -81,8 +75,8 @@ function summarizeToolResult(result: unknown): {
     typeof record.error === "string"
       ? record.error
       : typeof record.message === "string"
-        ? record.message
-        : null;
+      ? record.message
+      : null;
 
   if (explicitSuccess === false || errorText) {
     return {
@@ -103,7 +97,7 @@ function formatToolSummary(lines: string[]): string {
 }
 
 export async function generateBotReply(
-  input: string | ConversationMessage[],
+  input: string | ConversationMessage[]
 ): Promise<BotReplyResult> {
   const conversation: ConversationMessage[] = Array.isArray(input)
     ? trimConversationWindow(input)
@@ -116,13 +110,18 @@ export async function generateBotReply(
   const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   console.log(
-    `[llm:start] request=${requestId} actionRequest=${actionRequest}`,
+    `[llm:start] request=${requestId} actionRequest=${actionRequest}`
   );
   console.log(
-    `[llm:prompt] request=${requestId} latestUser=${latestUserMessage.slice(0, 300)}`,
+    `[llm:prompt] request=${requestId} latestUser=${latestUserMessage.slice(
+      0,
+      300
+    )}`
   );
   console.log(
-    `[llm:context] request=${requestId} messages=${conversation.length} chars=${conversation.reduce((sum, msg) => sum + msg.content.length, 0)}`,
+    `[llm:context] request=${requestId} messages=${
+      conversation.length
+    } chars=${conversation.reduce((sum, msg) => sum + msg.content.length, 0)}`
   );
 
   try {
@@ -208,7 +207,7 @@ export async function generateBotReply(
           const detail = fallbackError ?? summarized.detail;
 
           toolSummaryLines.push(
-            `${isError ? "[error]" : "[ok]"} ${toolName}: ${detail}`,
+            `${isError ? "[error]" : "[ok]"} ${toolName}: ${detail}`
           );
           return {
             toolName,
@@ -217,11 +216,15 @@ export async function generateBotReply(
           };
         });
         console.log(
-          `[llm:step] request=${requestId} step=${step.stepNumber} finish=${step.finishReason} toolCalls=${JSON.stringify(calls)} toolResults=${JSON.stringify(results)}`,
+          `[llm:step] request=${requestId} step=${step.stepNumber} finish=${
+            step.finishReason
+          } toolCalls=${JSON.stringify(calls)} toolResults=${JSON.stringify(
+            results
+          )}`
         );
         if (calls.length > 0 && results.length === 0) {
           console.warn(
-            `[llm:warn] request=${requestId} step=${step.stepNumber} tool call(s) had no results, likely validation or execution mismatch.`,
+            `[llm:warn] request=${requestId} step=${step.stepNumber} tool call(s) had no results, likely validation or execution mismatch.`
           );
         }
       },
@@ -230,23 +233,23 @@ export async function generateBotReply(
 
     if (toolCalls.length > 0 && text.trim().length === 0) {
       console.error(
-        `[llm:error] request=${requestId} Tool calls succeeded but no final text.`,
+        `[llm:error] request=${requestId} Tool calls succeeded but no final text.`
       );
       return {
         text: "I executed tools but could not generate a final answer text.",
         toolSummary: formatToolSummary(
-          toolSummaryLines.slice(-MAX_TOOL_SUMMARY_LINES),
+          toolSummaryLines.slice(-MAX_TOOL_SUMMARY_LINES)
         ),
       };
     }
 
     console.log(
-      `[llm:done] request=${requestId} toolCalls=${toolCalls.length} responseChars=${text.length}`,
+      `[llm:done] request=${requestId} toolCalls=${toolCalls.length} responseChars=${text.length}`
     );
     return {
       text,
       toolSummary: formatToolSummary(
-        toolSummaryLines.slice(-MAX_TOOL_SUMMARY_LINES),
+        toolSummaryLines.slice(-MAX_TOOL_SUMMARY_LINES)
       ),
     };
   } catch (error) {
@@ -255,7 +258,7 @@ export async function generateBotReply(
         error instanceof Error
           ? `${error.name}: ${error.message}`
           : String(error)
-      }`,
+      }`
     );
     throw error;
   }

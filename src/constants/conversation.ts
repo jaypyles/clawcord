@@ -1,0 +1,3 @@
+export const MAX_CONVERSATION_MESSAGES = 14;
+export const MAX_CONVERSATION_CHARS = 12_000;
+export const MAX_TOOL_SUMMARY_LINES = 8;
