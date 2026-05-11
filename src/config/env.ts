@@ -37,6 +37,20 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((value) => value === "true"),
+  /** Per bash_exec spawned process timeout (ms). Default 120s; increase for slow API scripts. */
+  BASH_EXEC_TIMEOUT_MS: z
+    .string()
+    .optional()
+    .transform((value) => {
+      if (!value?.trim()) {
+        return 120_000;
+      }
+      const n = Number(value);
+      if (!Number.isFinite(n) || n < 1000) {
+        return 120_000;
+      }
+      return Math.min(Math.floor(n), 600_000);
+    }),
 });
 
 const parsed = envSchema.safeParse(process.env);

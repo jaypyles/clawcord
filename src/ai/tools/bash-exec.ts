@@ -12,7 +12,6 @@ import { logToolError, logToolStart, logToolSuccess } from "../tool-logger";
 
 const execAsync = promisify(exec);
 const MAX_PREVIEW_CHARS = 3500;
-const BASH_TIMEOUT_MS = 10_000;
 const SKILLS_DIR = resolve(homedir(), ".config/clawcord/skills");
 
 function trimPreview(text: string): string {
@@ -129,7 +128,7 @@ export const bashExecTool = tool({
         `bash -lc ${JSON.stringify(bashCommand)}`,
         {
           cwd,
-          timeout: BASH_TIMEOUT_MS,
+          timeout: env.BASH_EXEC_TIMEOUT_MS,
           maxBuffer: 1024 * 1024,
         },
       );
@@ -148,16 +147,26 @@ export const bashExecTool = tool({
       return output;
     } catch (error) {
       const execError = error as {
-        code?: number;
+        code?: number | string;
+        killed?: boolean;
+        signal?: string;
         stdout?: string;
         stderr?: string;
         message: string;
       };
 
+      const timedOut =
+        execError.code === "ETIMEDOUT" ||
+        /timed out|ETIMEDOUT/i.test(execError.message);
+
       logToolError("bash_exec", error, {
         mode: filePath ? "file" : "command",
         filePath: filePath ?? null,
         code: execError.code ?? null,
+        killed: execError.killed ?? null,
+        signal: execError.signal ?? null,
+        timedOut,
+        timeoutMs: env.BASH_EXEC_TIMEOUT_MS,
         stderr: execError.stderr ? trimPreview(execError.stderr) : "",
         stdout: execError.stdout ? trimPreview(execError.stdout) : "",
       });

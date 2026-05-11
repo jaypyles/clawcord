@@ -287,25 +287,41 @@ export async function generateBotReply(
                 input: call.input ?? call.args ?? null,
               };
             });
-            const results = (step.toolResults ?? []).map((result) => {
-              const toolResult = result as {
-                toolName?: string;
-                isError?: boolean;
-                error?: unknown;
-                result?: unknown;
-              };
+            /** AI SDK v6 uses `output` on tool-result parts (not `result`). tool-error parts live on `content`, not `toolResults`. */
+            type ToolOutcomePart =
+              | { type: "tool-result"; toolName: string; output: unknown }
+              | { type: "tool-error"; toolName: string; error: unknown };
 
-              const summarized = summarizeToolResult(toolResult.result);
-              const toolName = toolResult.toolName ?? "unknown";
-              const isError =
-                Boolean(toolResult.isError) || summarized.outcome === "error";
-              const sdkErrorStr =
-                typeof toolResult.error === "string"
-                  ? toolResult.error
-                  : toolResult.error instanceof Error
-                  ? `${toolResult.error.name}: ${toolResult.error.message}`
-                  : null;
-              const detail = sdkErrorStr ?? summarized.detail;
+            const outcomeParts = (step.content ?? []).filter(
+              (part) => part.type === "tool-result" || part.type === "tool-error"
+            ) as ToolOutcomePart[];
+
+            const results = outcomeParts.map((part) => {
+              const toolName =
+                typeof part.toolName === "string" ? part.toolName : "unknown";
+
+              if (part.type === "tool-error") {
+                const err = part.error;
+                const sdkErrorStr =
+                  err instanceof Error
+                    ? `${err.name}: ${err.message}`
+                    : typeof err === "string"
+                    ? err
+                    : null;
+                const detail = sdkErrorStr ?? "tool execution threw";
+                toolSummaryLines.push(`[error] ${toolName}: ${detail}`);
+                return {
+                  toolName,
+                  isError: true,
+                  sdkError: err ?? null,
+                  detail,
+                };
+              }
+
+              const output = part.output;
+              const summarized = summarizeToolResult(output);
+              const isError = summarized.outcome === "error";
+              const detail = summarized.detail;
 
               toolSummaryLines.push(
                 `${isError ? "[error]" : "[ok]"} ${toolName}: ${detail}`
@@ -313,10 +329,7 @@ export async function generateBotReply(
               return {
                 toolName,
                 isError,
-                /** SDK path; often null when the tool returns { success: false } in output. */
-                sdkError:
-                  sdkErrorStr ?? (toolResult.error != null ? toolResult.error : null),
-                /** What we surfaced to the model / summaries (includes failed tool payloads). */
+                sdkError: null,
                 detail,
               };
             });
@@ -329,7 +342,7 @@ export async function generateBotReply(
             );
             if (calls.length > 0 && results.length === 0) {
               console.warn(
-                `[llm:warn] request=${requestId} step=${step.stepNumber} tool call(s) had no results, likely validation or execution mismatch.`
+                `[llm:warn] request=${requestId} step=${step.stepNumber} tool call(s) had no tool-result/tool-error parts (schema/unknown tool?).`
               );
             }
           },
