@@ -27,10 +27,26 @@ function isRateLimited(error: unknown): boolean {
     if (status === 429 || status === "429") {
       return true;
     }
-    if (
-      typeof record.message === "string" &&
-      /\b429\b/.test(record.message)
-    ) {
+    if (typeof record.message === "string") {
+      const msg = record.message;
+      if (
+        /\b429\b/.test(msg) ||
+        /\brate[- ]limit/i.test(msg) ||
+        /\btemporarily rate-limited\b/i.test(msg)
+      ) {
+        return true;
+      }
+    }
+    /** AI_RetryError aggregates attempts in `errors` (not always on `cause`). */
+    if (Array.isArray(record.errors)) {
+      for (const entry of record.errors) {
+        if (visit(entry)) {
+          return true;
+        }
+      }
+    }
+    const lastErr = record.lastError;
+    if (lastErr != null && visit(lastErr)) {
       return true;
     }
     if (record.cause != null && visit(record.cause)) {
@@ -40,6 +56,16 @@ function isRateLimited(error: unknown): boolean {
       const response = record.response as Record<string, unknown>;
       if (response.status === 429) {
         return true;
+      }
+    }
+    const data = record.data;
+    if (data != null && typeof data === "object") {
+      const errObj = (data as Record<string, unknown>).error;
+      if (errObj != null && typeof errObj === "object") {
+        const code = (errObj as Record<string, unknown>).code;
+        if (code === 429 || code === "429") {
+          return true;
+        }
       }
     }
     return false;
@@ -202,6 +228,8 @@ export async function generateBotReply(
       try {
         generation = await generateText({
           model: provider(modelId),
+          /** Avoid burning SDK retries on the same model when we rotate on 429. */
+          maxRetries: modelChain.length > 1 ? 0 : undefined,
           system: `You are a helpful Discord bot. 
         Keep answers concise, clear, and practical unless asked for deep detail. 
         Use tools when they are useful and cite what tool you used in plain language. 
