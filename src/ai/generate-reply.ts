@@ -274,7 +274,7 @@ export async function generateBotReply(
         If a skill includes scripts for the task, run them via bash_exec filePath mode with appropriate args before answering.`,
           tools: botTools,
           toolChoice: "auto",
-          stopWhen: stepCountIs(15),
+          stopWhen: stepCountIs(30),
           onStepFinish: (step) => {
             const calls = (step.toolCalls ?? []).map((toolCall) => {
               const call = toolCall as {
