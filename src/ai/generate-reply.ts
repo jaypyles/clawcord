@@ -17,6 +17,53 @@ const provider = createOpenRouter({
   apiKey: env.OPENROUTER_API_KEY,
 });
 
+function isRateLimited(error: unknown): boolean {
+  const visit = (node: unknown): boolean => {
+    if (node == null || typeof node !== "object") {
+      return false;
+    }
+    const record = node as Record<string, unknown>;
+    const status = record.statusCode ?? record.status;
+    if (status === 429 || status === "429") {
+      return true;
+    }
+    if (
+      typeof record.message === "string" &&
+      /\b429\b/.test(record.message)
+    ) {
+      return true;
+    }
+    if (record.cause != null && visit(record.cause)) {
+      return true;
+    }
+    if (record.response != null && typeof record.response === "object") {
+      const response = record.response as Record<string, unknown>;
+      if (response.status === 429) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  return visit(error);
+}
+
+/**
+ * When OPENROUTER_FREE_MODELS is set: try each id in order, then OPENROUTER_PAID_MODEL if set.
+ * Otherwise use OPENROUTER_MODEL only.
+ */
+function openRouterModelChain(): string[] {
+  const free = env.OPENROUTER_FREE_MODELS;
+  if (free.length > 0) {
+    const chain = [...free];
+    if (env.OPENROUTER_PAID_MODEL) {
+      chain.push(env.OPENROUTER_PAID_MODEL);
+    }
+    return chain;
+  }
+  return [env.OPENROUTER_MODEL];
+}
+
 function looksLikeActionRequest(prompt: string): boolean {
   const lowered = prompt.toLowerCase();
   return (
@@ -136,9 +183,26 @@ export async function generateBotReply(
         ? env.AGENT_CORE_DIR
         : resolve(process.cwd(), "agent-core");
 
-    const { text, toolCalls } = await generateText({
-      model: provider(env.OPENROUTER_MODEL),
-      system: `You are a helpful Discord bot. 
+    const modelChain = openRouterModelChain();
+    console.log(
+      `[llm:models] request=${requestId} chain=${modelChain.join(" -> ")}`
+    );
+
+    let generation: undefined | Awaited<
+      ReturnType<
+        typeof generateText<typeof botTools>
+      >
+    >;
+
+    for (let attempt = 0; attempt < modelChain.length; attempt++) {
+      const modelId = modelChain[attempt];
+      if (!modelId) {
+        throw new Error("OpenRouter model chain produced an empty model id.");
+      }
+      try {
+        generation = await generateText({
+          model: provider(modelId),
+          system: `You are a helpful Discord bot. 
         Keep answers concise, clear, and practical unless asked for deep detail. 
         Use tools when they are useful and cite what tool you used in plain language. 
 
@@ -227,7 +291,26 @@ export async function generateBotReply(
         }
       },
       prompt,
-    });
+        });
+        break;
+      } catch (error) {
+        const hasAnotherModel = attempt < modelChain.length - 1;
+        if (isRateLimited(error) && hasAnotherModel) {
+          const nextModel = modelChain[attempt + 1];
+          console.warn(
+            `[llm:429] request=${requestId} model=${modelId} rate limited; retrying with ${nextModel}`
+          );
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    if (!generation) {
+      throw new Error("OpenRouter generation produced no result.");
+    }
+
+    const { text, toolCalls } = generation;
 
     if (toolCalls.length > 0 && text.trim().length === 0) {
       console.error(

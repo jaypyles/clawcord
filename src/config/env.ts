@@ -6,6 +6,27 @@ const envSchema = z.object({
   DISCORD_GUILD_ID: z.string().min(1, "DISCORD_GUILD_ID is required"),
   OPENROUTER_API_KEY: z.string().min(1, "OPENROUTER_API_KEY is required"),
   OPENROUTER_MODEL: z.string().default("openai/gpt-4o-mini"),
+  /** Comma-separated OpenRouter model ids tried in order when rate-limited (429). */
+  OPENROUTER_FREE_MODELS: z
+    .string()
+    .optional()
+    .transform((value) => {
+      if (!value?.trim()) {
+        return [] as string[];
+      }
+      return value
+        .split(",")
+        .map((model) => model.trim())
+        .filter((model) => model.length > 0);
+    }),
+  /** Used after all OPENROUTER_FREE_MODELS return 429 for the same request. */
+  OPENROUTER_PAID_MODEL: z
+    .string()
+    .optional()
+    .transform((value) => {
+      const trimmed = value?.trim();
+      return trimmed && trimmed.length > 0 ? trimmed : undefined;
+    }),
   PLAYGROUND_DIR: z.string().optional(),
   AGENT_CORE_DIR: z.string().optional(),
   SCHEDULE_DISCORD_CHANNEL_ID: z
