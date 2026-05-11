@@ -157,6 +157,9 @@ export const bashExecTool = tool({
       logToolError("bash_exec", error, {
         mode: filePath ? "file" : "command",
         filePath: filePath ?? null,
+        code: execError.code ?? null,
+        stderr: execError.stderr ? trimPreview(execError.stderr) : "",
+        stdout: execError.stdout ? trimPreview(execError.stdout) : "",
       });
       return {
         success: false,

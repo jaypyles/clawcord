@@ -150,11 +150,20 @@ function summarizeToolResult(result: unknown): {
       : typeof record.message === "string"
       ? record.message
       : null;
+  const stderr =
+    typeof record.stderr === "string" && record.stderr.trim().length > 0
+      ? record.stderr.trim()
+      : null;
 
   if (explicitSuccess === false || errorText) {
+    const base = errorText ?? "failed";
+    const detail =
+      stderr && !base.includes(stderr.slice(0, 80))
+        ? `${base} | stderr: ${stderr}`
+        : base;
     return {
       outcome: "error",
-      detail: errorText ?? "failed",
+      detail,
     };
   }
 
@@ -290,9 +299,13 @@ export async function generateBotReply(
               const toolName = toolResult.toolName ?? "unknown";
               const isError =
                 Boolean(toolResult.isError) || summarized.outcome === "error";
-              const fallbackError =
-                typeof toolResult.error === "string" ? toolResult.error : null;
-              const detail = fallbackError ?? summarized.detail;
+              const sdkErrorStr =
+                typeof toolResult.error === "string"
+                  ? toolResult.error
+                  : toolResult.error instanceof Error
+                  ? `${toolResult.error.name}: ${toolResult.error.message}`
+                  : null;
+              const detail = sdkErrorStr ?? summarized.detail;
 
               toolSummaryLines.push(
                 `${isError ? "[error]" : "[ok]"} ${toolName}: ${detail}`
@@ -300,7 +313,11 @@ export async function generateBotReply(
               return {
                 toolName,
                 isError,
-                error: toolResult.error ?? null,
+                /** SDK path; often null when the tool returns { success: false } in output. */
+                sdkError:
+                  sdkErrorStr ?? (toolResult.error != null ? toolResult.error : null),
+                /** What we surfaced to the model / summaries (includes failed tool payloads). */
+                detail,
               };
             });
             console.log(
