@@ -214,11 +214,9 @@ export async function generateBotReply(
       `[llm:models] request=${requestId} chain=${modelChain.join(" -> ")}`
     );
 
-    let generation: undefined | Awaited<
-      ReturnType<
-        typeof generateText<typeof botTools>
-      >
-    >;
+    let generation:
+      | undefined
+      | Awaited<ReturnType<typeof generateText<typeof botTools>>>;
 
     for (let attempt = 0; attempt < modelChain.length; attempt++) {
       const modelId = modelChain[attempt];
@@ -265,60 +263,60 @@ export async function generateBotReply(
         Before running a skill script with args, inspect SKILL.md details and infer the script's expected CLI style (positional vs named flags). 
         If script execution fails with usage or argument errors, correct flags/args and retry with the same script. 
         If a skill includes scripts for the task, run them via bash_exec filePath mode with appropriate args before answering.`,
-      tools: botTools,
-      toolChoice: "auto",
-      stopWhen: stepCountIs(30),
-      onStepFinish: (step) => {
-        const calls = (step.toolCalls ?? []).map((toolCall) => {
-          const call = toolCall as {
-            toolName?: string;
-            input?: unknown;
-            args?: unknown;
-          };
-          return {
-            toolName: call.toolName ?? "unknown",
-            input: call.input ?? call.args ?? null,
-          };
-        });
-        const results = (step.toolResults ?? []).map((result) => {
-          const toolResult = result as {
-            toolName?: string;
-            isError?: boolean;
-            error?: unknown;
-            result?: unknown;
-          };
+          tools: botTools,
+          toolChoice: "auto",
+          stopWhen: stepCountIs(15),
+          onStepFinish: (step) => {
+            const calls = (step.toolCalls ?? []).map((toolCall) => {
+              const call = toolCall as {
+                toolName?: string;
+                input?: unknown;
+                args?: unknown;
+              };
+              return {
+                toolName: call.toolName ?? "unknown",
+                input: call.input ?? call.args ?? null,
+              };
+            });
+            const results = (step.toolResults ?? []).map((result) => {
+              const toolResult = result as {
+                toolName?: string;
+                isError?: boolean;
+                error?: unknown;
+                result?: unknown;
+              };
 
-          const summarized = summarizeToolResult(toolResult.result);
-          const toolName = toolResult.toolName ?? "unknown";
-          const isError =
-            Boolean(toolResult.isError) || summarized.outcome === "error";
-          const fallbackError =
-            typeof toolResult.error === "string" ? toolResult.error : null;
-          const detail = fallbackError ?? summarized.detail;
+              const summarized = summarizeToolResult(toolResult.result);
+              const toolName = toolResult.toolName ?? "unknown";
+              const isError =
+                Boolean(toolResult.isError) || summarized.outcome === "error";
+              const fallbackError =
+                typeof toolResult.error === "string" ? toolResult.error : null;
+              const detail = fallbackError ?? summarized.detail;
 
-          toolSummaryLines.push(
-            `${isError ? "[error]" : "[ok]"} ${toolName}: ${detail}`
-          );
-          return {
-            toolName,
-            isError,
-            error: toolResult.error ?? null,
-          };
-        });
-        console.log(
-          `[llm:step] request=${requestId} step=${step.stepNumber} finish=${
-            step.finishReason
-          } toolCalls=${JSON.stringify(calls)} toolResults=${JSON.stringify(
-            results
-          )}`
-        );
-        if (calls.length > 0 && results.length === 0) {
-          console.warn(
-            `[llm:warn] request=${requestId} step=${step.stepNumber} tool call(s) had no results, likely validation or execution mismatch.`
-          );
-        }
-      },
-      prompt,
+              toolSummaryLines.push(
+                `${isError ? "[error]" : "[ok]"} ${toolName}: ${detail}`
+              );
+              return {
+                toolName,
+                isError,
+                error: toolResult.error ?? null,
+              };
+            });
+            console.log(
+              `[llm:step] request=${requestId} step=${step.stepNumber} finish=${
+                step.finishReason
+              } toolCalls=${JSON.stringify(calls)} toolResults=${JSON.stringify(
+                results
+              )}`
+            );
+            if (calls.length > 0 && results.length === 0) {
+              console.warn(
+                `[llm:warn] request=${requestId} step=${step.stepNumber} tool call(s) had no results, likely validation or execution mismatch.`
+              );
+            }
+          },
+          prompt,
         });
         break;
       } catch (error) {
