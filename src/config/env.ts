@@ -19,7 +19,7 @@ const envSchema = z.object({
         .map((model) => model.trim())
         .filter((model) => model.length > 0);
     }),
-  /** Used after all OPENROUTER_FREE_MODELS fail with 429/404 for the same request. */
+  /** Used after all OPENROUTER_FREE_MODELS fail with 402/404/429 for the same request. */
   OPENROUTER_PAID_MODEL: z
     .string()
     .optional()

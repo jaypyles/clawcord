@@ -18,9 +18,9 @@ const provider = createOpenRouter({
   apiKey: env.OPENROUTER_API_KEY,
 });
 
-/** Rotate to the next model in the chain on 429 (rate limit) or 404 (model unavailable). */
+/** Rotate to the next model on provider errors that may succeed on another route/model. */
 function shouldRotateToNextModel(error: unknown): boolean {
-  const rotateStatus = new Set([429, 404, "429", "404"]);
+  const rotateStatus = new Set([402, 404, 429, "402", "404", "429"]);
 
   const visit = (node: unknown): boolean => {
     if (node == null || typeof node !== "object") {
@@ -34,12 +34,15 @@ function shouldRotateToNextModel(error: unknown): boolean {
     if (typeof record.message === "string") {
       const msg = record.message;
       if (
+        /\b402\b/.test(msg) ||
         /\b429\b/.test(msg) ||
         /\b404\b/.test(msg) ||
         /\brate[- ]limit/i.test(msg) ||
         /\btemporarily rate-limited\b/i.test(msg) ||
         /\bno longer available\b/i.test(msg) ||
-        /\bnot found\b/i.test(msg)
+        /\bnot found\b/i.test(msg) ||
+        /\bout of credits\b/i.test(msg) ||
+        /\binsufficient_quota\b/i.test(msg)
       ) {
         return true;
       }
@@ -226,7 +229,7 @@ export async function generateBotReply(
       try {
         generation = await generateText({
           model: provider(modelId),
-          /** Avoid burning SDK retries on the same model when we rotate on 429/404. */
+          /** Avoid burning SDK retries on the same model when we rotate the chain. */
           maxRetries: modelChain.length > 1 ? 0 : undefined,
           system: `You are a helpful Discord bot. 
         Keep answers concise, clear, and practical unless asked for deep detail. 
@@ -345,7 +348,7 @@ export async function generateBotReply(
         if (shouldRotateToNextModel(error) && hasAnotherModel) {
           const nextModel = modelChain[attempt + 1];
           console.warn(
-            `[llm:rotate] request=${requestId} model=${modelId} unavailable or rate-limited; retrying with ${nextModel}`
+            `[llm:rotate] request=${requestId} model=${modelId} failed with a retryable provider error; retrying with ${nextModel}`
           );
           continue;
         }
