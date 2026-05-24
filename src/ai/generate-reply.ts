@@ -185,6 +185,14 @@ function conversationToPrompt(conversation: ConversationMessage[]): string {
   ].join("\n");
 }
 
+const MAX_TOOL_RESULT_DETAIL_CHARS = 800;
+
+function clipToolDetail(text: string): string {
+  return text.length > MAX_TOOL_RESULT_DETAIL_CHARS
+    ? `${text.slice(0, MAX_TOOL_RESULT_DETAIL_CHARS)}…`
+    : text;
+}
+
 function summarizeToolResult(result: unknown): {
   outcome: "ok" | "error";
   detail: string;
@@ -199,22 +207,28 @@ function summarizeToolResult(result: unknown): {
     typeof record.error === "string"
       ? record.error
       : typeof record.message === "string"
-      ? record.message
-      : null;
+        ? record.message
+        : null;
   const stderr =
     typeof record.stderr === "string" && record.stderr.trim().length > 0
       ? record.stderr.trim()
       : null;
+  const stdout =
+    typeof record.stdout === "string" && record.stdout.trim().length > 0
+      ? record.stdout.trim()
+      : null;
 
   if (explicitSuccess === false || errorText) {
-    const base = errorText ?? "failed";
-    const detail =
-      stderr && !base.includes(stderr.slice(0, 80))
-        ? `${base} | stderr: ${stderr}`
-        : base;
+    const parts: string[] = [errorText ?? "failed"];
+    if (stdout) {
+      parts.push(`stdout: ${stdout}`);
+    }
+    if (stderr) {
+      parts.push(`stderr: ${stderr}`);
+    }
     return {
       outcome: "error",
-      detail,
+      detail: clipToolDetail(parts.join(" | ")),
     };
   }
 
