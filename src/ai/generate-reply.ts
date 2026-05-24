@@ -93,6 +93,63 @@ function looksLikeActionRequest(prompt: string): boolean {
   );
 }
 
+function looksLikeUserCommand(prompt: string): boolean {
+  return /![a-zA-Z0-9_-]+/.test(prompt);
+}
+
+function buildAgentSystemPrompt(options: {
+  playgroundFolder: string;
+  agentCoreDir: string;
+  actionRequest: boolean;
+  hasUserCommand: boolean;
+}): string {
+  const { playgroundFolder, agentCoreDir, actionRequest, hasUserCommand } =
+    options;
+
+  const toolBudget = actionRequest
+    ? "Aim for ≤12 tool calls total; stop sooner when the task is done."
+    : "Aim for ≤5 tool calls total. Prefer answering after one good source.";
+
+  const skillsGuidance = actionRequest
+    ? `For action/task requests: call skills_reader list once, then read a skill only if its description clearly matches. Run skill scripts via bash_exec filePath mode when the skill applies.`
+    : `Do not list or read skills for simple questions (menus, facts, lookups). Skills are for multi-step actions (scripts, installs, workflows).`;
+
+  const agentFilesGuidance = actionRequest
+    ? `Read BEHAVIOR.md and MEMORY.md once at the start (behavior_editor + memory_editor read). Apply enabled behavior rules.`
+    : `Read BEHAVIOR.md once (behavior_editor read) so tone/rules apply. Read MEMORY.md only if the question needs prior context.`;
+
+  return `You are a helpful Discord bot. Keep answers concise, clear, and practical unless asked for deep detail.
+
+## Tool discipline
+${toolBudget}
+- Call only tools that materially help the latest user message. No speculative browsing.
+- Stop as soon as you can answer confidently. Do not chain alternate sites (Yelp, Google, TripAdvisor, etc.) unless the user asked for comparisons or the primary source failed.
+- Never invent or guess URLs. Use URLs from the user, search results, or a known official domain.
+- Do not repeat the same tool on the same URL in one turn.
+- Prefer the fewest steps: try http_fetch first for static pages; use get_site only when content needs JavaScript rendering.
+- Do not use get_site on search engines (Google, DuckDuckGo, Bing) or login-walled aggregators unless the user explicitly asked.
+- If a fetch returns little or no useful text, try at most one other authoritative source, then answer with what you have and note gaps.
+- Mention which tools you used in plain language when relevant.
+
+## Agent files (${agentCoreDir})
+${agentFilesGuidance}
+COMMANDS.md: use commands_registry only when the user message contains a command trigger (e.g. !commandname).
+SCHEDULE.md: use schedule_editor for cron job changes only when scheduling comes up.
+${hasUserCommand ? "This message includes a user command — check COMMANDS.md via commands_registry." : ""}
+
+## Skills
+${skillsGuidance}
+Use skills_editor only when creating/updating/deleting skills.
+
+## Execution
+Sandbox/playground: ${playgroundFolder}
+create_file / edit_file / move_file / bash_exec: use for files, scripts, and command execution when needed.
+http_fetch: APIs and static HTML.
+get_site: JS-heavy pages after http_fetch is insufficient.
+
+Answer the latest USER message. Do not claim inability before one reasonable attempt when tools are clearly required.`;
+}
+
 function trimConversationWindow(
   messages: ConversationMessage[]
 ): ConversationMessage[] {
@@ -183,6 +240,8 @@ export async function generateBotReply(
       ?.content ?? "";
   const prompt = conversationToPrompt(conversation);
   const actionRequest = looksLikeActionRequest(latestUserMessage);
+  const hasUserCommand = looksLikeUserCommand(latestUserMessage);
+  const maxToolSteps = actionRequest ? 24 : 10;
   const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   console.log(
@@ -231,45 +290,15 @@ export async function generateBotReply(
           model: provider(modelId),
           /** Avoid burning SDK retries on the same model when we rotate the chain. */
           maxRetries: modelChain.length > 1 ? 0 : undefined,
-          system: `You are a helpful Discord bot. 
-        Keep answers concise, clear, and practical unless asked for deep detail. 
-        Use tools when they are useful and cite what tool you used in plain language. 
-
-        You have a sandbox folder called 'playground' for scratch work (full path: ${playgroundFolder}).
-        Prefer it for ad-hoc files when appropriate. The create_file and edit_file tools can read and write any path the process can access (e.g. bind mounts in Docker); relative paths use the container working directory.
-
-        Everything about your behavior is stored in this folder as md files: ${agentCoreDir}
-
-        MEMORY.md is your memory. Use memory_editor to read/add/delete structured memory entries. ALWAYS check the MEMORY.md file before acting.
-        BEHAVIOR.md controls response behavior. Use behavior_editor to read/add/enable-disable/delete structured behavior rules. 
-        ALWAYS read BEHAVIOR.md before acting and APPLY all enabled behavior rules to every response (e.g. tone, style, constraints). Your answers must follow those rules.
-        You must always read BEHAVIOR.md before responding to any prompt.
-
-        These files are life and death, so should always be read before acting.
-
-        COMMANDS.md is your command registry. Use the commands_registry tool to list/read/upsert commands for quick command workflows.
-        SCHEDULE.md defines cron-scheduled prompts. Use schedule_editor to read/add/set_enabled/delete jobs. Each job has a cron expression (e.g. '0 9 * * *' for 9:00 daily) and a prompt; the agent runs that prompt on schedule. Optional discordChannelId posts the reply to a Discord channel.
-        User commands come in the form: !<command_name>: whenever a user uses this format, they want to call a command. 
-        You should only be reading commands if a user has a command in their message content.
-
-        Before responding to the user, make sure you read these to remember how to respond to things.
-
-        The http_fetch tool accepts rich fetch options similar to native fetch.
-        Use get_site for JavaScript-rendered pages; use http_fetch for APIs and static responses. 
-        Use skills_reader to discover and read local skills from ~/.config/clawcord/skills when relevant. 
-        Use skills_editor to create, update, or delete skills (action: create/update/delete; skillId + content for create/update). 
-        When a user asks you to do an action/task, first call skills_reader with action="list" before other tools. 
-        Use the returned skill name + description to choose if a skill applies, and mention the matching skill in your response. 
-        Do not claim inability before attempting relevant tool calls. 
-        Prefer Claude Code skill format metadata and instructions when available. 
-        Use bash_exec for all script and command execution tasks, including Python scripts. 
-        For bash_exec filePath mode, do not include inline command unless needed; prioritize filePath + args execution. 
-        Before running a skill script with args, inspect SKILL.md details and infer the script's expected CLI style (positional vs named flags). 
-        If script execution fails with usage or argument errors, correct flags/args and retry with the same script. 
-        If a skill includes scripts for the task, run them via bash_exec filePath mode with appropriate args before answering.`,
+          system: buildAgentSystemPrompt({
+            playgroundFolder,
+            agentCoreDir,
+            actionRequest,
+            hasUserCommand,
+          }),
           tools: botTools,
           toolChoice: "auto",
-          stopWhen: stepCountIs(30),
+          stopWhen: stepCountIs(maxToolSteps),
           onStepFinish: (step) => {
             const calls = (step.toolCalls ?? []).map((toolCall) => {
               const call = toolCall as {
