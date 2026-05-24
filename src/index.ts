@@ -15,6 +15,7 @@ import {
 } from "./ai/generate-reply";
 import { startScheduleRunner } from "./ai/schedule-runner";
 import { pingCommand } from "./commands/ping";
+import { setModelChainCommand } from "./commands/set-model-chain";
 import { env } from "./config/env";
 import { splitIntoDiscordMessages } from "./discord/message-chunks";
 
@@ -34,6 +35,7 @@ const client = new Client({
 
 client.commands = new Collection<string, SlashCommand>();
 client.commands.set(pingCommand.data.name, pingCommand);
+client.commands.set(setModelChainCommand.data.name, setModelChainCommand);
 
 const MAX_REPLY_CHAIN_DEPTH = 20;
 const MAX_STORED_TOOL_SUMMARIES = 500;

@@ -1,9 +1,10 @@
 import { REST, Routes } from "discord.js";
 
 import { pingCommand } from "./commands/ping";
+import { setModelChainCommand } from "./commands/set-model-chain";
 import { env } from "./config/env";
 
-const commands = [pingCommand.data.toJSON()];
+const commands = [pingCommand.data.toJSON(), setModelChainCommand.data.toJSON()];
 
 async function registerCommands() {
   const rest = new REST({ version: "10" }).setToken(env.DISCORD_TOKEN);

@@ -3,6 +3,7 @@ import { generateText, stepCountIs } from "ai";
 import { resolve } from "node:path";
 
 import { env } from "../config/env";
+import { getOpenRouterModelChain } from "./model-chain";
 import { botTools } from "./tools/index";
 import type { ConversationMessage, BotReplyResult } from "../types/ai";
 import {
@@ -78,22 +79,6 @@ function shouldRotateToNextModel(error: unknown): boolean {
   };
 
   return visit(error);
-}
-
-/**
- * When OPENROUTER_FREE_MODELS is set: try each id in order, then OPENROUTER_PAID_MODEL if set.
- * Otherwise use OPENROUTER_MODEL only.
- */
-function openRouterModelChain(): string[] {
-  const free = env.OPENROUTER_FREE_MODELS;
-  if (free.length > 0) {
-    const chain = [...free];
-    if (env.OPENROUTER_PAID_MODEL) {
-      chain.push(env.OPENROUTER_PAID_MODEL);
-    }
-    return chain;
-  }
-  return [env.OPENROUTER_MODEL];
 }
 
 function looksLikeActionRequest(prompt: string): boolean {
@@ -224,7 +209,7 @@ export async function generateBotReply(
         ? env.AGENT_CORE_DIR
         : resolve(process.cwd(), "agent-core");
 
-    const modelChain = openRouterModelChain();
+    const modelChain = getOpenRouterModelChain();
     console.log(
       `[llm:models] request=${requestId} chain=${modelChain.join(" -> ")}`
     );
