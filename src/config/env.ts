@@ -6,7 +6,7 @@ const envSchema = z.object({
   DISCORD_GUILD_ID: z.string().min(1, "DISCORD_GUILD_ID is required"),
   OPENROUTER_API_KEY: z.string().min(1, "OPENROUTER_API_KEY is required"),
   OPENROUTER_MODEL: z.string().default("openai/gpt-4o-mini"),
-  /** Comma-separated OpenRouter model ids tried in order when rate-limited (429). */
+  /** Comma-separated OpenRouter model ids tried in order when rate-limited (429) or unavailable (404). */
   OPENROUTER_FREE_MODELS: z
     .string()
     .optional()
@@ -19,7 +19,7 @@ const envSchema = z.object({
         .map((model) => model.trim())
         .filter((model) => model.length > 0);
     }),
-  /** Used after all OPENROUTER_FREE_MODELS return 429 for the same request. */
+  /** Used after all OPENROUTER_FREE_MODELS fail with 429/404 for the same request. */
   OPENROUTER_PAID_MODEL: z
     .string()
     .optional()

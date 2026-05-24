@@ -17,22 +17,28 @@ const provider = createOpenRouter({
   apiKey: env.OPENROUTER_API_KEY,
 });
 
-function isRateLimited(error: unknown): boolean {
+/** Rotate to the next model in the chain on 429 (rate limit) or 404 (model unavailable). */
+function shouldRotateToNextModel(error: unknown): boolean {
+  const rotateStatus = new Set([429, 404, "429", "404"]);
+
   const visit = (node: unknown): boolean => {
     if (node == null || typeof node !== "object") {
       return false;
     }
     const record = node as Record<string, unknown>;
     const status = record.statusCode ?? record.status;
-    if (status === 429 || status === "429") {
+    if (rotateStatus.has(status as number | string)) {
       return true;
     }
     if (typeof record.message === "string") {
       const msg = record.message;
       if (
         /\b429\b/.test(msg) ||
+        /\b404\b/.test(msg) ||
         /\brate[- ]limit/i.test(msg) ||
-        /\btemporarily rate-limited\b/i.test(msg)
+        /\btemporarily rate-limited\b/i.test(msg) ||
+        /\bno longer available\b/i.test(msg) ||
+        /\bnot found\b/i.test(msg)
       ) {
         return true;
       }
@@ -54,7 +60,7 @@ function isRateLimited(error: unknown): boolean {
     }
     if (record.response != null && typeof record.response === "object") {
       const response = record.response as Record<string, unknown>;
-      if (response.status === 429) {
+      if (rotateStatus.has(response.status as number | string)) {
         return true;
       }
     }
@@ -63,7 +69,7 @@ function isRateLimited(error: unknown): boolean {
       const errObj = (data as Record<string, unknown>).error;
       if (errObj != null && typeof errObj === "object") {
         const code = (errObj as Record<string, unknown>).code;
-        if (code === 429 || code === "429") {
+        if (rotateStatus.has(code as number | string)) {
           return true;
         }
       }
@@ -235,7 +241,7 @@ export async function generateBotReply(
       try {
         generation = await generateText({
           model: provider(modelId),
-          /** Avoid burning SDK retries on the same model when we rotate on 429. */
+          /** Avoid burning SDK retries on the same model when we rotate on 429/404. */
           maxRetries: modelChain.length > 1 ? 0 : undefined,
           system: `You are a helpful Discord bot. 
         Keep answers concise, clear, and practical unless asked for deep detail. 
@@ -351,10 +357,10 @@ export async function generateBotReply(
         break;
       } catch (error) {
         const hasAnotherModel = attempt < modelChain.length - 1;
-        if (isRateLimited(error) && hasAnotherModel) {
+        if (shouldRotateToNextModel(error) && hasAnotherModel) {
           const nextModel = modelChain[attempt + 1];
           console.warn(
-            `[llm:429] request=${requestId} model=${modelId} rate limited; retrying with ${nextModel}`
+            `[llm:rotate] request=${requestId} model=${modelId} unavailable or rate-limited; retrying with ${nextModel}`
           );
           continue;
         }
