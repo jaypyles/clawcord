@@ -34,6 +34,9 @@ ENV PIPX_HOME=/usr/local/pipx \
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
 
+# Chromium for get_site (Playwright); --with-deps installs required system libraries
+RUN bunx playwright install --with-deps chromium
+
 # Copy application source and agent-core (behavior, memory, schedule, etc.)
 COPY src ./src
 COPY tsconfig.json ./

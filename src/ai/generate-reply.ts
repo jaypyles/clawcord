@@ -254,7 +254,8 @@ export async function generateBotReply(
 
         Before responding to the user, make sure you read these to remember how to respond to things.
 
-        The http_fetch tool accepts rich fetch options similar to native fetch. 
+        The http_fetch tool accepts rich fetch options similar to native fetch.
+        Use get_site for JavaScript-rendered pages; use http_fetch for APIs and static responses. 
         Use skills_reader to discover and read local skills from ~/.config/clawcord/skills when relevant. 
         Use skills_editor to create, update, or delete skills (action: create/update/delete; skillId + content for create/update). 
         When a user asks you to do an action/task, first call skills_reader with action="list" before other tools. 

@@ -3,6 +3,7 @@ import { behaviorEditorTool } from "./behavior-editor";
 import { commandsRegistryTool } from "./commands-registry";
 import { createFileTool } from "./create-file";
 import { editFileTool } from "./edit-file";
+import { getSiteTool } from "./get-site";
 import { getTimeTool } from "./get-time";
 import { httpFetchTool } from "./http-fetch";
 import { moveFileTool } from "./move-file";
@@ -13,6 +14,7 @@ import { skillsReaderTool } from "./skills-reader";
 
 export const botTools = {
   http_fetch: httpFetchTool,
+  get_site: getSiteTool,
   create_file: createFileTool,
   edit_file: editFileTool,
   move_file: moveFileTool,
@@ -23,5 +25,5 @@ export const botTools = {
   get_time: getTimeTool,
   skills_reader: skillsReaderTool,
   skills_editor: skillsEditorTool,
-  schedule_editor: scheduleEditorTool
+  schedule_editor: scheduleEditorTool,
 };

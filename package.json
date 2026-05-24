@@ -7,13 +7,17 @@
     "dev": "bun --watch src/index.ts",
     "start": "bun src/index.ts",
     "register": "bun src/register-commands.ts",
+    "get-site": "bun scripts/get-site.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@openrouter/ai-sdk-provider": "^2.3.1",
     "ai": "latest",
+    "cheerio": "^1.2.0",
     "croner": "^10.0.1",
     "discord.js": "latest",
+    "node-html-markdown": "^2.0.0",
+    "playwright": "^1.60.0",
     "zod": "latest"
   },
   "devDependencies": {
