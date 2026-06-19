@@ -126,7 +126,9 @@ ${toolBudget}
 - Stop as soon as you can answer confidently. Do not chain alternate sites (Yelp, Google, TripAdvisor, etc.) unless the user asked for comparisons or the primary source failed.
 - Never invent or guess URLs. Use URLs from the user, search results, or a known official domain.
 - Do not repeat the same tool on the same URL in one turn.
-- Prefer the fewest steps: try http_fetch first for static pages; use get_site only when content needs JavaScript rendering.
+- Prefer the fewest steps: for a user-provided page URL, use get_site once (headless browser markdown). Use http_fetch for APIs/JSON only — not as a substitute after get_site already returned markdown.
+- When get_site returns success with a \`markdown\` field, answer from that text. Do not claim the page is JS-blocked or unavailable if get_site returned content.
+- Do not call http_fetch or get_site again on the same URL after get_site already succeeded with markdownLength > 0.
 - Do not use get_site on search engines (Google, DuckDuckGo, Bing) or login-walled aggregators unless the user explicitly asked.
 - If a fetch returns little or no useful text, try at most one other authoritative source, then answer with what you have and note gaps.
 - Mention which tools you used in plain language when relevant.
@@ -144,8 +146,8 @@ Use skills_editor only when creating/updating/deleting skills.
 ## Execution
 Sandbox/playground: ${playgroundFolder}
 create_file / edit_file / move_file / bash_exec: use for files, scripts, and command execution when needed.
-http_fetch: APIs and static HTML.
-get_site: JS-heavy pages after http_fetch is insufficient.
+http_fetch: APIs and static JSON only.
+get_site: web pages (returns full markdown field — read it to answer).
 
 Answer the latest USER message. Do not claim inability before one reasonable attempt when tools are clearly required.`;
 }
@@ -229,6 +231,17 @@ function summarizeToolResult(result: unknown): {
     return {
       outcome: "error",
       detail: clipToolDetail(parts.join(" | ")),
+    };
+  }
+
+  if (typeof record.markdown === "string" && record.markdown.length > 0) {
+    const len =
+      typeof record.markdownLength === "number"
+        ? record.markdownLength
+        : record.markdown.length;
+    return {
+      outcome: "ok",
+      detail: clipToolDetail(`markdown ${len} chars`),
     };
   }
 

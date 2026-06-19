@@ -8,16 +8,20 @@ import {
 } from "discord.js";
 
 import type { SlashCommand } from "./commands";
-import {
-  type BotReplyResult,
-  type ConversationMessage,
-  generateBotReply
-} from "./ai/generate-reply";
+import { generateBotReply } from "./ai/generate-reply";
 import { startScheduleRunner } from "./ai/schedule-runner";
 import { pingCommand } from "./commands/ping";
 import { setModelChainCommand } from "./commands/set-model-chain";
 import { env } from "./config/env";
-import { splitIntoDiscordMessages } from "./discord/message-chunks";
+import {
+  buildConversationFromThread,
+  isAgentThread,
+  messageToConversationTurn,
+  sendBotReply,
+  startAgentThread
+} from "./discord/thread-session";
+import type { ConversationMessage } from "./types/ai";
+import type { ReplyChannel } from "./discord/thread-session";
 
 type ClientWithCommands = Client & {
   commands: Collection<string, SlashCommand>;
@@ -37,65 +41,80 @@ client.commands = new Collection<string, SlashCommand>();
 client.commands.set(pingCommand.data.name, pingCommand);
 client.commands.set(setModelChainCommand.data.name, setModelChainCommand);
 
-const MAX_REPLY_CHAIN_DEPTH = 20;
-const MAX_STORED_TOOL_SUMMARIES = 500;
-const toolSummaryByBotMessageId = new Map<string, string>();
+const instanceId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+const messagesInFlight = new Set<string>();
+const recentlyHandledMessageIds = new Map<string, number>();
+const MESSAGE_DEDUP_MS = 60_000;
 
-async function buildConversationFromMessage(
-  message: Message,
-  clientUserId: string
-): Promise<ConversationMessage[]> {
-  const chain: Message[] = [];
-  let cursor: Message | null = message;
-
-  for (let depth = 0; depth < MAX_REPLY_CHAIN_DEPTH && cursor; depth++) {
-    chain.push(cursor);
-
-    if (!cursor.reference?.messageId) {
-      break;
-    }
-
-    try {
-      cursor = await cursor.channel.messages.fetch(cursor.reference.messageId);
-    } catch (error) {
-      console.warn("Failed to fetch referenced chain message:", error);
-      break;
-    }
+function claimMessage(message: Message): boolean {
+  if (message.partial) {
+    return false;
+  }
+  if (messagesInFlight.has(message.id)) {
+    return false;
   }
 
-  const ordered = [...chain].reverse();
-  return ordered
-    .map((item) => {
-      const isBot = item.author.id === clientUserId;
-      const content = item.content
-        .replace(new RegExp(`<@!?${clientUserId}>`, "g"), "")
-        .trim();
+  const lastHandledAt = recentlyHandledMessageIds.get(message.id);
+  if (
+    lastHandledAt !== undefined &&
+    Date.now() - lastHandledAt < MESSAGE_DEDUP_MS
+  ) {
+    return false;
+  }
 
-      if (!content) {
-        return null;
+  messagesInFlight.add(message.id);
+  return true;
+}
+
+function releaseMessage(messageId: string, handled: boolean): void {
+  messagesInFlight.delete(messageId);
+  if (handled) {
+    recentlyHandledMessageIds.set(messageId, Date.now());
+    if (recentlyHandledMessageIds.size > 500) {
+      const now = Date.now();
+      for (const [id, handledAt] of recentlyHandledMessageIds) {
+        if (now - handledAt > MESSAGE_DEDUP_MS) {
+          recentlyHandledMessageIds.delete(id);
+        }
       }
+    }
+  }
+}
 
-      if (isBot) {
-        const toolSummary = toolSummaryByBotMessageId.get(item.id);
-        const assistantContent = toolSummary
-          ? `${content}\n\n${toolSummary}`
-          : content;
-        return {
-          role: "assistant" as const,
-          content: assistantContent
-        };
-      }
+async function handleConversation(
+  message: Message,
+  conversation: ConversationMessage[],
+  replyChannel: ReplyChannel
+): Promise<void> {
+  if (conversation.length === 0) {
+    await replyChannel.send(
+      message.guildId === null
+        ? "Send me a message with your prompt."
+        : "Mention me with a prompt, for example: `@bot summarize this link ...`"
+    );
+    return;
+  }
 
-      return {
-        role: "user" as const,
-        content: `${item.author.username}: ${content}`
-      };
-    })
-    .filter((turn): turn is ConversationMessage => Boolean(turn));
+  if (replyChannel.sendTyping) {
+    await replyChannel.sendTyping();
+  }
+
+  try {
+    const reply = await generateBotReply(conversation);
+    await sendBotReply(replyChannel, reply);
+  } catch (error) {
+    console.error("Agent request failed:", error);
+    await replyChannel.send(
+      "I could not get a model response right now. Please try again in a moment."
+    );
+  }
 }
 
 client.once(Events.ClientReady, (readyClient) => {
-  console.log(`Logged in as ${readyClient.user.tag}`);
+  console.log(`Logged in as ${readyClient.user.tag} (instance=${instanceId})`);
+  console.log(
+    "[bot] Duplicate replies? Ensure only ONE process uses this token (stop Docker before bun dev)."
+  );
   startScheduleRunner(readyClient);
 });
 
@@ -131,67 +150,71 @@ client.on(Events.InteractionCreate, async (interaction) => {
 });
 
 client.on(Events.MessageCreate, async (message) => {
-  if (message.author.bot || !client.user) {
+  if (message.author.bot || !client.user || !claimMessage(message)) {
     return;
   }
 
+  const clientUserId = client.user.id;
   const isDm = message.guildId === null;
-  const mentionsBot = message.mentions.users.has(client.user.id);
-  const isReply = Boolean(message.reference?.messageId);
-  let replyingToBot = false;
-
-  if (isReply && message.reference?.messageId) {
-    try {
-      const referenced = await message.channel.messages.fetch(message.reference.messageId);
-      replyingToBot = referenced.author.id === client.user.id;
-    } catch (error) {
-      console.warn("Failed to resolve reply target:", error);
-    }
-  }
-
-  if (!isDm && !mentionsBot && !replyingToBot) {
-    return;
-  }
-
-  const conversation = await buildConversationFromMessage(message, client.user.id);
-
-  if (conversation.length === 0) {
-    await message.reply(
-      isDm
-        ? "Send me a message with your prompt."
-        : "Mention me with a prompt, for example: `@bot summarize this link ...`"
-    );
-    return;
-  }
-
-  await message.channel.sendTyping();
+  const mentionsBot = message.mentions.users.has(clientUserId);
+  let handled = false;
 
   try {
-    const reply: BotReplyResult = await generateBotReply(conversation);
-    const chunks = splitIntoDiscordMessages(reply.text);
-    const sentMessage = await message.reply(chunks[0] ?? "");
-    toolSummaryByBotMessageId.set(sentMessage.id, reply.toolSummary);
-    for (let i = 1; i < chunks.length; i++) {
-      const chunk = chunks[i];
-      if (chunk) {
-        // Store the same summary for all bot chunks in this turn.
-        // This preserves tool-memory continuity even if user replies to a later chunk.
-        const sentChunk = await message.channel.send(chunk);
-        toolSummaryByBotMessageId.set(sentChunk.id, reply.toolSummary);
-      }
+    console.log(
+      `[message] handling id=${message.id} instance=${instanceId} dm=${isDm} channel=${message.channel.id}`
+    );
+
+    if (isDm) {
+      const turn = messageToConversationTurn(message, clientUserId);
+      const conversation = turn ? [turn] : [];
+      await handleConversation(message, conversation, message.channel);
+      handled = true;
+      return;
     }
 
-    if (toolSummaryByBotMessageId.size > MAX_STORED_TOOL_SUMMARIES) {
-      const oldestKey = toolSummaryByBotMessageId.keys().next().value;
-      if (oldestKey) {
-        toolSummaryByBotMessageId.delete(oldestKey);
+    if (message.channel.isThread()) {
+      if (!(await isAgentThread(message.channel, clientUserId))) {
+        return;
       }
+      const conversation = await buildConversationFromThread(
+        message.channel,
+        clientUserId
+      );
+      await handleConversation(message, conversation, message.channel);
+      handled = true;
+      return;
     }
+
+    if (!mentionsBot) {
+      return;
+    }
+
+    if (!message.channel.isTextBased() || message.channel.isDMBased()) {
+      return;
+    }
+
+    const thread = await startAgentThread(message);
+    const conversation = await buildConversationFromThread(thread, clientUserId);
+    await handleConversation(message, conversation, thread);
+    handled = true;
   } catch (error) {
-    console.error("Mention request failed:", error);
-    await message.reply(
-      "I could not get a model response right now. Please try again in a moment."
-    );
+    console.error("Message handler failed:", error);
+    if (
+      message.channel.isTextBased() &&
+      !message.channel.isDMBased() &&
+      mentionsBot
+    ) {
+      await message
+        .reply(
+          "I could not start a thread here. Check that I have **Create Public Threads** and **Send Messages in Threads** permissions, then try again."
+        )
+        .catch((replyError) => {
+          console.error("Failed to send thread error reply:", replyError);
+        });
+      handled = true;
+    }
+  } finally {
+    releaseMessage(message.id, handled);
   }
 });
 

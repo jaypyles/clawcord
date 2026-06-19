@@ -18,7 +18,10 @@ function objectFromHeaders(headers: Headers): Record<string, string> {
 
 const fetchInputSchema = z.object({
   url: z.string().url().describe("URL to fetch"),
-  method: z.string().optional().describe("HTTP method, e.g. GET, POST, PUT, DELETE"),
+  method: z
+    .string()
+    .optional()
+    .describe("HTTP method, e.g. GET, POST, PUT, DELETE"),
   headers: z
     .record(z.string(), z.string())
     .optional()
@@ -47,7 +50,7 @@ const fetchInputSchema = z.object({
       "reload",
       "no-cache",
       "force-cache",
-      "only-if-cached"
+      "only-if-cached",
     ])
     .optional(),
   referrer: z.string().optional(),
@@ -61,19 +64,28 @@ const fetchInputSchema = z.object({
       "same-origin",
       "strict-origin",
       "strict-origin-when-cross-origin",
-      "unsafe-url"
+      "unsafe-url",
     ])
     .optional(),
   integrity: z.string().optional(),
   keepalive: z.boolean().optional(),
-  duplex: z.enum(["half"]).optional().describe("Required for some streaming request bodies"),
-  timeoutMs: z.number().int().min(1).max(120_000).optional().default(15_000),
+  duplex: z
+    .enum(["half"])
+    .optional()
+    .describe("Required for some streaming request bodies"),
+  timeoutMs: z.number().int().min(1).max(120_000).optional().default(10_000),
   responseFormat: z
     .enum(["auto", "text", "json", "base64"])
     .optional()
     .default("auto")
     .describe("How response body should be decoded"),
-  maxResponseChars: z.number().int().min(200).max(100_000).optional().default(12_000)
+  maxResponseChars: z
+    .number()
+    .int()
+    .min(200)
+    .max(100_000)
+    .optional()
+    .default(12_000),
 });
 
 export const httpFetchTool = tool({
@@ -84,7 +96,7 @@ export const httpFetchTool = tool({
     logToolStart("http_fetch", {
       url: input.url,
       method: input.method ?? "GET",
-      responseFormat: input.responseFormat
+      responseFormat: input.responseFormat,
     });
     const startedAt = Date.now();
     const targetUrl = new URL(input.url);
@@ -129,7 +141,7 @@ export const httpFetchTool = tool({
       referrer: input.referrer,
       referrerPolicy: input.referrerPolicy,
       integrity: input.integrity,
-      keepalive: input.keepalive
+      keepalive: input.keepalive,
     };
 
     if (input.duplex) {
@@ -139,7 +151,7 @@ export const httpFetchTool = tool({
     try {
       const response = await fetch(targetUrl, {
         ...init,
-        signal: AbortSignal.timeout(input.timeoutMs)
+        signal: AbortSignal.timeout(input.timeoutMs),
       });
 
       const contentType = response.headers.get("content-type") ?? "";
@@ -155,7 +167,7 @@ export const httpFetchTool = tool({
             url: targetUrl.toString(),
             method: init.method ?? "GET",
             headers: objectFromHeaders(headers),
-            hasBody: body !== undefined
+            hasBody: body !== undefined,
           },
           response: {
             ok: response.ok,
@@ -166,18 +178,18 @@ export const httpFetchTool = tool({
             type: response.type,
             headers: responseHeaders,
             contentType,
-            elapsedMs
+            elapsedMs,
           },
           body: {
             format: "base64",
             base64Preview: truncateText(base64, maxChars),
-            byteLength: Buffer.byteLength(base64, "utf8")
-          }
+            byteLength: Buffer.byteLength(base64, "utf8"),
+          },
         };
         logToolSuccess("http_fetch", {
           status: output.response.status,
           elapsedMs: output.response.elapsedMs,
-          format: output.body.format
+          format: output.body.format,
         });
         return output;
       }
@@ -185,7 +197,11 @@ export const httpFetchTool = tool({
       const rawText = await response.text();
       const textPreview = truncateText(rawText, maxChars);
 
-      if (input.responseFormat === "json" || (input.responseFormat === "auto" && contentType.includes("application/json"))) {
+      if (
+        input.responseFormat === "json" ||
+        (input.responseFormat === "auto" &&
+          contentType.includes("application/json"))
+      ) {
         try {
           const parsed = JSON.parse(rawText);
           const output = {
@@ -193,7 +209,7 @@ export const httpFetchTool = tool({
               url: targetUrl.toString(),
               method: init.method ?? "GET",
               headers: objectFromHeaders(headers),
-              hasBody: body !== undefined
+              hasBody: body !== undefined,
             },
             response: {
               ok: response.ok,
@@ -204,19 +220,19 @@ export const httpFetchTool = tool({
               type: response.type,
               headers: responseHeaders,
               contentType,
-              elapsedMs
+              elapsedMs,
             },
             body: {
               format: "json",
               parsedJson: parsed,
               textPreview,
-              truncated: textPreview.length < rawText.length
-            }
+              truncated: textPreview.length < rawText.length,
+            },
           };
           logToolSuccess("http_fetch", {
             status: output.response.status,
             elapsedMs: output.response.elapsedMs,
-            format: output.body.format
+            format: output.body.format,
           });
           return output;
         } catch {
@@ -229,7 +245,7 @@ export const httpFetchTool = tool({
           url: targetUrl.toString(),
           method: init.method ?? "GET",
           headers: objectFromHeaders(headers),
-          hasBody: body !== undefined
+          hasBody: body !== undefined,
         },
         response: {
           ok: response.ok,
@@ -240,19 +256,19 @@ export const httpFetchTool = tool({
           type: response.type,
           headers: responseHeaders,
           contentType,
-          elapsedMs
+          elapsedMs,
         },
         body: {
           format: "text",
           textPreview,
           textLength: rawText.length,
-          truncated: textPreview.length < rawText.length
-        }
+          truncated: textPreview.length < rawText.length,
+        },
       };
       logToolSuccess("http_fetch", {
         status: output.response.status,
         elapsedMs: output.response.elapsedMs,
-        format: output.body.format
+        format: output.body.format,
       });
       return output;
     } catch (error) {
@@ -262,14 +278,15 @@ export const httpFetchTool = tool({
           url: targetUrl.toString(),
           method: init.method ?? "GET",
           headers: objectFromHeaders(headers),
-          hasBody: body !== undefined
+          hasBody: body !== undefined,
         },
         error: {
           name: error instanceof Error ? error.name : "Error",
-          message: error instanceof Error ? error.message : "Unknown fetch error"
+          message:
+            error instanceof Error ? error.message : "Unknown fetch error",
         },
-        elapsedMs: Date.now() - startedAt
+        elapsedMs: Date.now() - startedAt,
       };
     }
-  }
+  },
 });

@@ -6,12 +6,6 @@ import { logToolError, logToolStart, logToolSuccess } from "../tool-logger";
 
 export type { Webpage } from "../../utils/page-reader";
 
-const MAX_RESPONSE_PREVIEW = 12_000;
-
-function truncateText(value: string, max = MAX_RESPONSE_PREVIEW): string {
-  return value.length > max ? `${value.slice(0, max)}\n...[truncated]` : value;
-}
-
 const getSiteInputSchema = z.object({
   url: z.string().url().describe("URL to load in a headless browser"),
   selector: z
@@ -25,18 +19,11 @@ const getSiteInputSchema = z.object({
     .max(120_000)
     .optional()
     .default(30_000),
-  maxResponseChars: z
-    .number()
-    .int()
-    .min(200)
-    .max(100_000)
-    .optional()
-    .default(MAX_RESPONSE_PREVIEW),
 });
 
 export const getSiteTool = tool({
   description:
-    "Load a URL in a headless browser and return sanitized HTML plus markdown. Use for JS-rendered pages; prefer http_fetch for APIs and static JSON.",
+    "Load a URL in a headless browser and return the full page as markdown in the `markdown` field. Read that field to answer. Use for JS-rendered pages; prefer http_fetch for APIs and static JSON.",
   inputSchema: getSiteInputSchema,
   execute: async (input) => {
     logToolStart("get_site", {
@@ -52,36 +39,38 @@ export const getSiteTool = tool({
         selector: input.selector,
         timeoutMs: input.timeoutMs,
       });
-      const maxChars = input.maxResponseChars;
-      const markdownPreview = truncateText(page.markdown, maxChars);
-      const htmlPreview = truncateText(page.html, maxChars);
+
+      if (page.markdown.trim().length === 0) {
+        return {
+          url: page.url,
+          success: false,
+          error:
+            "Page loaded but markdown was empty (login wall, bot block, or no text). Try another source.",
+          markdownLength: 0,
+          elapsedMs: Date.now() - startedAt,
+        };
+      }
 
       const output = {
         url: page.url,
+        success: true,
+        markdown: page.markdown,
+        markdownLength: page.markdown.length,
         selector: input.selector ?? null,
         elapsedMs: Date.now() - startedAt,
-        markdown: {
-          preview: markdownPreview,
-          length: page.markdown.length,
-          truncated: markdownPreview.length < page.markdown.length,
-        },
-        html: {
-          preview: htmlPreview,
-          length: page.html.length,
-          truncated: htmlPreview.length < page.html.length,
-        },
       };
 
       logToolSuccess("get_site", {
         url: output.url,
         elapsedMs: output.elapsedMs,
-        markdownLength: output.markdown.length,
+        markdownLength: output.markdownLength,
       });
       return output;
     } catch (error) {
       logToolError("get_site", error, { url: input.url });
       return {
         url: input.url,
+        success: false,
         selector: input.selector ?? null,
         elapsedMs: Date.now() - startedAt,
         error: {
