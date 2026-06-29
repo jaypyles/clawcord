@@ -193,7 +193,7 @@ client.on(Events.MessageCreate, async (message) => {
       return;
     }
 
-    const thread = await startAgentThread(message);
+    const thread = await startAgentThread(message, clientUserId);
     const conversation = await buildConversationFromThread(thread, clientUserId);
     await handleConversation(message, conversation, thread);
     handled = true;

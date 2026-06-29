@@ -5,6 +5,10 @@ import {
 } from "discord.js";
 
 import type { BotReplyResult } from "../ai/generate-reply";
+import {
+  generateThreadTitle,
+  sanitizeThreadTitle,
+} from "../ai/generate-thread-title";
 import type { ConversationMessage } from "../types/ai";
 import { splitIntoDiscordMessages } from "./message-chunks";
 
@@ -20,10 +24,50 @@ export type { ReplyChannel };
 
 const agentThreadIds = new Set<string>();
 const toolSummaryByBotMessageId = new Map<string, string>();
+const MAX_THREAD_NAME_LENGTH = 100;
 
-function threadNameFor(message: Message): string {
-  const base = `agent-${message.author.username}`;
-  return base.length > 100 ? base.slice(0, 100) : base;
+function extractMessageContent(message: Message, clientUserId: string): string {
+  return message.content
+    .replace(new RegExp(`<@!?${clientUserId}>`, "g"), "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function fallbackThreadName(message: Message, clientUserId: string): string {
+  const content = extractMessageContent(message, clientUserId);
+  const firstLine = content.split(/\r?\n/, 1)[0]?.trim() ?? "";
+
+  if (firstLine.length > 0) {
+    return sanitizeThreadTitle(firstLine);
+  }
+
+  const fallback = `agent-${message.author.username}`;
+  return fallback.length > MAX_THREAD_NAME_LENGTH
+    ? fallback.slice(0, MAX_THREAD_NAME_LENGTH)
+    : fallback;
+}
+
+async function setGeneratedThreadName(
+  thread: ThreadChannel,
+  message: Message,
+  clientUserId: string
+): Promise<void> {
+  const title = await generateThreadTitle(
+    extractMessageContent(message, clientUserId)
+  );
+  if (!title || title === thread.name) {
+    return;
+  }
+
+  try {
+    await thread.setName(title);
+    console.log(`[thread] renamed id=${thread.id} name=${title}`);
+  } catch (error) {
+    console.warn(
+      `[thread] failed to rename id=${thread.id}:`,
+      error instanceof Error ? error.message : error
+    );
+  }
 }
 
 function messageToTurn(
@@ -109,7 +153,10 @@ export async function isAgentThread(
   return botParticipated;
 }
 
-export async function startAgentThread(message: Message): Promise<ThreadChannel> {
+export async function startAgentThread(
+  message: Message,
+  clientUserId: string
+): Promise<ThreadChannel> {
   const fullMessage = message.partial ? await message.fetch() : message;
   const channel = fullMessage.channel;
 
@@ -122,7 +169,7 @@ export async function startAgentThread(message: Message): Promise<ThreadChannel>
   }
 
   const thread = await channel.threads.create({
-    name: threadNameFor(fullMessage),
+    name: fallbackThreadName(fullMessage, clientUserId),
     startMessage: fullMessage.id,
     autoArchiveDuration: ThreadAutoArchiveDuration.OneDay,
     reason: "Agent session",
@@ -136,6 +183,7 @@ export async function startAgentThread(message: Message): Promise<ThreadChannel>
   console.log(
     `[thread] created id=${thread.id} name=${thread.name} parent=${channel.id}`
   );
+  void setGeneratedThreadName(thread, fullMessage, clientUserId);
   return thread;
 }
 
