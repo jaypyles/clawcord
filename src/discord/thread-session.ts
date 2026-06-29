@@ -20,10 +20,33 @@ export type { ReplyChannel };
 
 const agentThreadIds = new Set<string>();
 const toolSummaryByBotMessageId = new Map<string, string>();
+const MAX_THREAD_NAME_LENGTH = 100;
 
-function threadNameFor(message: Message): string {
-  const base = `agent-${message.author.username}`;
-  return base.length > 100 ? base.slice(0, 100) : base;
+function threadNameFor(message: Message, clientUserId: string): string {
+  const content = message.content
+    .replace(new RegExp(`<@!?${clientUserId}>`, "g"), "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const firstLine = content.split(/\r?\n/, 1)[0]?.trim() ?? "";
+
+  if (firstLine.length > 0) {
+    if (firstLine.length <= MAX_THREAD_NAME_LENGTH) {
+      return firstLine;
+    }
+
+    const truncated = firstLine.slice(0, MAX_THREAD_NAME_LENGTH);
+    const lastSpace = truncated.lastIndexOf(" ");
+    if (lastSpace > MAX_THREAD_NAME_LENGTH * 0.6) {
+      return truncated.slice(0, lastSpace).trimEnd();
+    }
+    return truncated.trimEnd();
+  }
+
+  const fallback = `agent-${message.author.username}`;
+  return fallback.length > MAX_THREAD_NAME_LENGTH
+    ? fallback.slice(0, MAX_THREAD_NAME_LENGTH)
+    : fallback;
 }
 
 function messageToTurn(
@@ -109,7 +132,10 @@ export async function isAgentThread(
   return botParticipated;
 }
 
-export async function startAgentThread(message: Message): Promise<ThreadChannel> {
+export async function startAgentThread(
+  message: Message,
+  clientUserId: string
+): Promise<ThreadChannel> {
   const fullMessage = message.partial ? await message.fetch() : message;
   const channel = fullMessage.channel;
 
@@ -122,7 +148,7 @@ export async function startAgentThread(message: Message): Promise<ThreadChannel>
   }
 
   const thread = await channel.threads.create({
-    name: threadNameFor(fullMessage),
+    name: threadNameFor(fullMessage, clientUserId),
     startMessage: fullMessage.id,
     autoArchiveDuration: ThreadAutoArchiveDuration.OneDay,
     reason: "Agent session",
