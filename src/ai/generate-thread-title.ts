@@ -2,13 +2,13 @@ import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { generateText } from "ai";
 
 import { env } from "../config/env";
-import { getOpenRouterModelChain } from "./model-chain";
 
 const provider = createOpenRouter({
   apiKey: env.OPENROUTER_API_KEY,
 });
 
 const MAX_THREAD_NAME_LENGTH = 100;
+const THREAD_TITLE_MODEL = "openai/gpt-4o-mini";
 
 export function sanitizeThreadTitle(raw: string): string {
   const title = raw
@@ -38,14 +38,9 @@ export async function generateThreadTitle(
     return null;
   }
 
-  const modelId = getOpenRouterModelChain()[0];
-  if (!modelId) {
-    return null;
-  }
-
   try {
     const { text } = await generateText({
-      model: provider(modelId),
+      model: provider(THREAD_TITLE_MODEL),
       maxRetries: 0,
       maxOutputTokens: 40,
       system: `You name Discord conversation threads. Given a user's opening message, output ONLY a short thread title (about 3-8 words). No quotes, no prefix, no explanation. Keep it under ${MAX_THREAD_NAME_LENGTH} characters.`,
